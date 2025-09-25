@@ -1,8 +1,8 @@
-# Group TEAM_NUMBER
+# Group 24
 Group Name: TEAM_NAME
 
-[MVP Link](https://docs.google.com/document/d/1xFI9DDdO5HZAcu36Y6NL-RTDry5E3WHkfy-ZEWuqbXM/edit?usp=sharing)
+[MVP Link](https://docs.google.com/document/d/1lDpp-ATxPl4e1viacWK5b8JE4yeUcfhp/edit?usp=sharing&ouid=112574928766566924596&rtpof=true&sd=true)
 
-Team Members: STUDENTS_NETIDS
+Team Members: ksetty2 , das41, as269, nallu2, tdjuric2
 
-Project Manager: PM_NETID
+Project Manager: eshasm2
