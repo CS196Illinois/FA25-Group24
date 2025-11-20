@@ -1,0 +1,33 @@
+import React from "react";
+import { NavLink } from "react-router-dom";
+
+export default function Navbar() {
+  const navItems = [
+    { label: "Home", path: "/" },
+    { label: "Add Task", path: "/add-task" },
+    { label: "Calendar", path: "/calendar" },
+    { label: "Pomodoro Timer", path: "/pomodoro" },
+  ];
+
+  return (
+    <nav className="w-full bg-white shadow-md p-4 flex justify-between items-center">
+      <h1 className="text-2xl font-bold">Productivity App</h1>
+      <ul className="flex gap-6">
+        {navItems.map((item) => (
+          <li key={item.path}>
+            <NavLink
+              to={item.path}
+              className={({ isActive }) =>
+                `text-lg font-medium transition-colors ${
+                  isActive ? "text-blue-600" : "text-gray-600 hover:text-black"
+                }`
+              }
+            >
+              {item.label}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
