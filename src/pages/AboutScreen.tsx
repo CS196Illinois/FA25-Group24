@@ -1,248 +1,258 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, SafeAreaView, ScrollView } from 'react-native';
-import { Task } from './HomeScreen';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+} from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { colors } from '../constants/colors';
+import { calculateQuadrant, getQuadrantName } from '../utils/eisenhowerUtils';
 
-type PomodoroProps = {
-  addTask?: (task: Task) => void;
-};
+interface Task {
+  id: string;
+  name: string;
+  description: string;
+  dueDate: string;
+  dueTime: string;
+  importance: number;
+  difficulty: number;
+  isCompleted: boolean;
+  completedAt: string | null;
+  createdAt: string;
+}
 
-export default function PomodoroScreen({ addTask }: PomodoroProps) {
-  const defaultTimerMinutes = 1;
-  const defaultBreakDuration = 5;
+interface PomodoroScreenProps {
+  tasks: Task[];
+}
 
-  const [timerMinutes, setTimerMinutes] = useState(defaultTimerMinutes);
-  const [timeLeft, setTimeLeft] = useState(defaultTimerMinutes * 60);
+export default function PomodoroScreen({ tasks }: PomodoroScreenProps) {
+  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+  const [selectedQuadrant, setSelectedQuadrant] = useState<number>(1);
+  const [timer, setTimer] = useState(60); // 1 minute in seconds for demo
   const [isRunning, setIsRunning] = useState(false);
-  const [timerMode, setTimerMode] = useState<'countdown' | 'countup'>('countdown');
-  const [showTimerDropdown, setShowTimerDropdown] = useState(false);
-  const intervalRef = useRef<number | null>(null);
-
-  const [breakDuration, setBreakDuration] = useState(defaultBreakDuration);
-  const [currentBreakDuration, setCurrentBreakDuration] = useState(breakDuration);
-  const [isBreak, setIsBreak] = useState(false);
-
-  const [showTaskDropdown, setShowTaskDropdown] = useState(false);
-  const [selectedTask, setSelectedTask] = useState('Assignment');
-  const [selectedQuadrant, setSelectedQuadrant] = useState<Task['quadrant']>('doNow');
-
-  const timerModes = [
-    { label: 'Start Countdown', value: 'countdown' },
-    { label: 'Start Stopwatch', value: 'countup' },
-  ];
-
-  const quadrants: { key: Task['quadrant']; label: string }[] = [
-    { key: 'doNow', label: 'Do Now' },
-    { key: 'scheduleNow', label: 'Schedule' },
-    { key: 'keepInMind', label: 'Keep in Mind' },
-    { key: 'eliminate', label: 'Eliminate' },
-  ];
+  const [breakDuration, setBreakDuration] = useState(5);
+  const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
 
   useEffect(() => {
-    if (isRunning) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          if (timerMode === 'countdown') {
-            if (prev <= 1) {
-              clearInterval(intervalRef.current!);
-              if (!isBreak) {
-                setIsBreak(true);
-                setTimerMinutes(currentBreakDuration);
-                setTimeLeft(currentBreakDuration * 60);
-                return currentBreakDuration * 60;
-              } else {
-                setIsBreak(false);
-                setTimerMinutes(defaultTimerMinutes);
-                setTimeLeft(defaultTimerMinutes * 60);
-                setIsRunning(false);
-                return defaultTimerMinutes * 60;
-              }
-            }
-            return prev - 1;
-          } else {
-            if (prev >= timerMinutes * 60) {
-              clearInterval(intervalRef.current!);
-              setIsRunning(false);
-              return timerMinutes * 60;
-            }
-            return prev + 1;
-          }
-        });
-      }, 1000) as unknown as number;
+    filterTasksByQuadrant();
+  }, [tasks, selectedQuadrant]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isRunning && timer > 0) {
+      interval = setInterval(() => {
+        setTimer(prev => prev - 1);
+      }, 1000);
+    } else if (timer === 0) {
+      setIsRunning(false);
+      Alert.alert('Time\'s Up!', 'Great work! Time for a break.');
     }
 
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isRunning, timerMode, timerMinutes, isBreak, currentBreakDuration]);
+    return () => clearInterval(interval);
+  }, [isRunning, timer]);
 
-  useEffect(() => {
-    setTimeLeft(timerMode === 'countdown' ? timerMinutes * 60 : 0);
-  }, [timerMinutes, timerMode]);
-
+const filterTasksByQuadrant = () => {
+  console.log('All tasks:', tasks.length);
+  console.log('Selected quadrant:', selectedQuadrant);
+  
+  const filtered = tasks.filter(task => {
+    const quadrant = calculateQuadrant(task.difficulty, task.importance);
+    console.log(`Task: ${task.name}, Quadrant: ${quadrant}, Completed: ${task.isCompleted}`);
+    return quadrant === selectedQuadrant && !task.isCompleted;
+  });
+  
+  console.log('Filtered tasks:', filtered.length);
+  setFilteredTasks(filtered);
+  
+  // Auto-select first task if available
+  if (filtered.length > 0 && !selectedTaskId) {
+    setSelectedTaskId(filtered[0].id);
+  }
+};
   const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
+    const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleStartPause = () => {
-    if (!isRunning && timerMode === 'countdown') setCurrentBreakDuration(breakDuration);
-    setIsRunning(prev => !prev);
-  };
-
-  const handleBreakSelect = (minutes: number) => setBreakDuration(minutes);
-
-  const handleLeave = () => {
-    if (addTask) {
-      addTask({
-        name: selectedTask,
-        description: 'Pomodoro session',
-        dueDate: new Date().toLocaleDateString(),
-        quadrant: selectedQuadrant,
-      });
+  const startCountdown = () => {
+    if (!selectedTaskId) {
+      Alert.alert('No Task Selected', 'Please select a task first');
+      return;
     }
-
-    setIsRunning(false);
-    setTimerMode('countdown');
-    setTimerMinutes(defaultTimerMinutes);
-    setBreakDuration(defaultBreakDuration);
-    setCurrentBreakDuration(defaultBreakDuration);
-    setTimeLeft(defaultTimerMinutes * 60);
-    setIsBreak(false);
-    setSelectedTask('Assignment');
-    setSelectedQuadrant('doNow');
+    setIsRunning(true);
   };
+
+  const pauseCountdown = () => {
+    setIsRunning(false);
+  };
+
+  const resetCountdown = () => {
+    setIsRunning(false);
+    setTimer(60); // Reset to 1 minute
+  };
+
+  const getSelectedTaskName = () => {
+    const task = filteredTasks.find(t => t.id === selectedTaskId);
+    return task ? task.name : 'Select a task';
+  };
+
+  const renderQuadrantButton = (quadrant: number, label: string) => (
+    <TouchableOpacity
+      style={[
+        styles.quadrantButton,
+        selectedQuadrant === quadrant && styles.quadrantButtonActive,
+      ]}
+      onPress={() => setSelectedQuadrant(quadrant)}
+    >
+      <Text
+        style={[
+          styles.quadrantButtonText,
+          selectedQuadrant === quadrant && styles.quadrantButtonTextActive,
+        ]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Pomodoro</Text>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Task</Text>
-          <Pressable style={styles.selectButton} onPress={() => setShowTaskDropdown(true)}>
-            <Text style={styles.selectButtonText}>{selectedTask}</Text>
-            <Text style={styles.selectButtonIcon}>▼</Text>
-          </Pressable>
-        </View>
+      <View style={styles.content}>
+<Text style={styles.label}>Task</Text>
+<View style={styles.taskDropdownContainer}>
+  {filteredTasks.length === 0 ? (
+    <View style={styles.taskDropdown}>
+      <Text style={styles.taskDropdownText}>
+        No tasks in this quadrant
+      </Text>
+    </View>
+  ) : (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      {filteredTasks.map(task => (
+        <TouchableOpacity
+          key={task.id}
+          style={[
+            styles.taskChip,
+            selectedTaskId === task.id && styles.taskChipActive,
+          ]}
+          onPress={() => setSelectedTaskId(task.id)}
+        >
+          <Text
+            style={[
+              styles.taskChipText,
+              selectedTaskId === task.id && styles.taskChipTextActive,
+            ]}
+          >
+            {task.name}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  )}
+</View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quadrant</Text>
-          <View style={styles.quadrantGrid}>
-            {quadrants.map(q => (
-              <Pressable
-                key={q.key}
-                style={[
-                  styles.quadrantOption,
-                  selectedQuadrant === q.key && styles.quadrantOptionSelected,
-                ]}
-                onPress={() => setSelectedQuadrant(q.key)}
-              >
-                <Text
-                  style={[
-                    styles.quadrantOptionText,
-                    selectedQuadrant === q.key && styles.quadrantOptionTextSelected,
-                  ]}
-                >
-                  {q.label}
-                </Text>
-              </Pressable>
-            ))}
+        <Text style={styles.label}>Quadrant</Text>
+        <View style={styles.quadrantContainer}>
+          <View style={styles.quadrantRow}>
+            {renderQuadrantButton(1, 'Do Now')}
+            {renderQuadrantButton(2, 'Schedule')}
+          </View>
+          <View style={styles.quadrantRow}>
+            {renderQuadrantButton(3, 'Keep in Mind')}
+            {renderQuadrantButton(4, 'Eliminate')}
           </View>
         </View>
 
-        <View style={styles.timerBox}>
-          <Text style={styles.timerText}>{formatTime(timeLeft)}</Text>
-          {isBreak && <Text style={styles.breakIndicator}>Break Time</Text>}
+        <View style={styles.timerContainer}>
+          <Text style={styles.timerText}>{formatTime(timer)}</Text>
         </View>
 
-        <View style={styles.controlButtons}>
-          <Pressable
-            style={[styles.mainButton, { flex: 1 }]}
-            onPress={handleStartPause}
+        <View style={styles.controlsContainer}>
+          <TouchableOpacity
+            style={[styles.controlButton, styles.controlButtonPrimary]}
+            onPress={isRunning ? pauseCountdown : startCountdown}
           >
-            <Text style={styles.mainButtonText}>
-              {isRunning ? 'Pause' : timerMode === 'countdown' ? 'Start Countdown' : 'Start Stopwatch'}
+            <Text style={styles.controlButtonText}>
+              {isRunning ? 'Pause' : 'Start Countdown'}
             </Text>
-          </Pressable>
-          <Pressable
-            style={styles.dropdownButton}
-            onPress={() => setShowTimerDropdown(true)}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.resetButton}
+            onPress={resetCountdown}
           >
-            <Text style={styles.mainButtonText}>▼</Text>
-          </Pressable>
+            <Text style={styles.resetButtonText}>↻</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Break Duration</Text>
-          <View style={styles.breakOptions}>
-            {[5, 10, 15].map(min => (
-              <Pressable
-                key={min}
-                style={[
-                  styles.breakOption,
-                  breakDuration === min && styles.breakOptionSelected,
-                ]}
-                onPress={() => handleBreakSelect(min)}
-              >
-                <Text
-                  style={[
-                    styles.breakOptionText,
-                    breakDuration === min && styles.breakOptionTextSelected,
-                  ]}
-                >
-                  {min} min
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+        <Text style={styles.label}>Break Duration</Text>
+        <View style={styles.breakDurationContainer}>
+          <TouchableOpacity
+            style={[
+              styles.breakButton,
+              breakDuration === 5 && styles.breakButtonActive,
+            ]}
+            onPress={() => setBreakDuration(5)}
+          >
+            <Text
+              style={[
+                styles.breakButtonText,
+                breakDuration === 5 && styles.breakButtonTextActive,
+              ]}
+            >
+              5 min
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.breakButton,
+              breakDuration === 10 && styles.breakButtonActive,
+            ]}
+            onPress={() => setBreakDuration(10)}
+          >
+            <Text
+              style={[
+                styles.breakButtonText,
+                breakDuration === 10 && styles.breakButtonTextActive,
+              ]}
+            >
+              10 min
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.breakButton,
+              breakDuration === 15 && styles.breakButtonActive,
+            ]}
+            onPress={() => setBreakDuration(15)}
+          >
+            <Text
+              style={[
+                styles.breakButtonText,
+                breakDuration === 15 && styles.breakButtonTextActive,
+              ]}
+            >
+              15 min
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        <Pressable style={styles.leaveButton} onPress={handleLeave}>
-          <Text style={styles.leaveButtonText}>Save & Leave</Text>
-        </Pressable>
-      </ScrollView>
-
-      <Modal
-        transparent
-        visible={showTimerDropdown}
-        animationType="fade"
-        onRequestClose={() => setShowTimerDropdown(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowTimerDropdown(false)}>
-          <View style={styles.dropdown}>
-            {timerModes.map(mode => (
-              <Pressable
-                key={mode.value}
-                onPress={() => {
-                  setTimerMode(mode.value as 'countdown' | 'countup');
-                  setShowTimerDropdown(false);
-                }}
-                style={styles.dropdownItem}
-              >
-                <Text style={styles.dropdownItemText}>{mode.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
-
-      <Modal
-        transparent
-        visible={showTaskDropdown}
-        animationType="fade"
-        onRequestClose={() => setShowTaskDropdown(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowTaskDropdown(false)}>
-          <View style={styles.dropdown}>
-            <Text style={styles.emptyDropdownText}>No tasks yet</Text>
-          </View>
-        </Pressable>
-      </Modal>
-    </SafeAreaView>
+        <TouchableOpacity style={styles.saveButton}>
+          <Text style={styles.saveButtonText}>Save & Leave</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 }
 
@@ -252,186 +262,186 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    padding: 20,
+    paddingTop: 60,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: 'bold',
     color: colors.text,
   },
   content: {
-    flex: 1,
     padding: 20,
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 14,
+  label: {
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 12,
+    marginTop: 20,
   },
-  selectButton: {
+  pickerContainer: {
     backgroundColor: colors.surface,
     borderRadius: 12,
-    padding: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: 'hidden',
   },
-  selectButtonText: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: '500',
+  picker: {
+    height: 50,
   },
-  selectButtonIcon: {
-    fontSize: 14,
-    color: colors.textSecondary,
+
+  /* Added task dropdown and chip styles used in the component */
+  taskDropdownContainer: {
+    marginBottom: 12,
   },
-  quadrantGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  quadrantOption: {
-    backgroundColor: colors.surface,
-    borderRadius: 8,
+  taskDropdown: {
     padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    minWidth: '48%',
-    alignItems: 'center',
+    justifyContent: 'center',
   },
-  quadrantOptionSelected: {
+  taskDropdownText: {
+    color: colors.text,
+  },
+  taskChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  taskChipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  quadrantOptionText: {
-    fontSize: 14,
+  taskChipText: {
+    color: colors.text,
+  },
+  taskChipTextActive: {
+    color: 'white',
+  },
+
+  quadrantContainer: {
+    gap: 12,
+  },
+  quadrantRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  quadrantButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  quadrantButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  quadrantButtonText: {
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
   },
-  quadrantOptionTextSelected: {
-    color: '#fff',
+  quadrantButtonTextActive: {
+    color: 'white',
   },
-  timerBox: {
+  timerContainer: {
     backgroundColor: colors.surface,
     borderRadius: 16,
-    paddingVertical: 40,
-    paddingHorizontal: 60,
+    padding: 40,
+    marginTop: 24,
     alignItems: 'center',
-    marginBottom: 24,
     borderWidth: 1,
     borderColor: colors.border,
   },
   timerText: {
-    fontSize: 60,
+    fontSize: 72,
     fontWeight: 'bold',
     color: colors.text,
+    fontVariant: ['tabular-nums'],
   },
-  breakIndicator: {
-    color: colors.primary,
-    fontSize: 16,
-    marginTop: 8,
-    fontWeight: '600',
-  },
-  controlButtons: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 24,
-  },
-  mainButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 15,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  mainButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  dropdownButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  breakOptions: {
+  controlsContainer: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 24,
   },
-  breakOption: {
+  controlButton: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  breakOptionSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  breakOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  breakOptionTextSelected: {
-    color: '#fff',
-  },
-  leaveButton: {
-    backgroundColor: colors.surface,
-    paddingVertical: 14,
-    paddingHorizontal: 40,
+    padding: 18,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  leaveButtonText: {
-    color: colors.text,
+  controlButtonPrimary: {
+    backgroundColor: colors.primary,
+  },
+  controlButtonText: {
     fontSize: 16,
     fontWeight: '600',
+    color: 'white',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  resetButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  dropdown: {
-    backgroundColor: colors.surface,
+  resetButtonText: {
+    fontSize: 28,
+    color: 'white',
+  },
+  breakDurationContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  breakButton: {
+    flex: 1,
+    padding: 16,
     borderRadius: 12,
-    padding: 8,
-    minWidth: 200,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+    alignItems: 'center',
   },
-  dropdownItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+  breakButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  dropdownItemText: {
+  breakButtonText: {
     fontSize: 16,
+    fontWeight: '600',
     color: colors.text,
   },
-  emptyDropdownText: {
-    color: colors.textSecondary,
-    textAlign: 'center',
-    padding: 12,
-    fontSize: 14,
+  breakButtonTextActive: {
+    color: 'white',
+  },
+  saveButton: {
+    marginTop: 32,
+    padding: 18,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
 });

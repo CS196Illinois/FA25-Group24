@@ -1,183 +1,234 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, SafeAreaView } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Platform,
+  Alert,
+} from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import Slider from '@react-native-community/slider';
-import { Task } from './HomeScreen';
 import { colors } from '../constants/colors';
 
-type NewTaskProps = {
-  defaultQuadrant: Task['quadrant'];
-  addTask: (task: Task) => void;
+interface NewTaskProps {
+  addTask: (task: any) => Promise<void>;
   onClose: () => void;
-};
+}
 
-export default function NewTask({ defaultQuadrant, addTask, onClose }: NewTaskProps) {
+export default function NewTask({ addTask, onClose }: NewTaskProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [dueTime, setDueTime] = useState(new Date());
   const [importance, setImportance] = useState(3);
   const [difficulty, setDifficulty] = useState(3);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const handleSave = () => {
-    if (!name.trim()) return;
-    addTask({
-      name,
-      description,
-      dueDate: dueDate.toLocaleDateString(),
-      quadrant: defaultQuadrant,
-    });
+  const formatDate = (date: Date) => {
+    return date.toISOString().split('T')[0];
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) setDueDate(selectedDate);
+  const formatTime = (date: Date) => {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
   };
 
-  const handleTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(false);
-    if (selectedTime) {
-      const newDate = new Date(dueDate);
-      newDate.setHours(selectedTime.getHours());
-      newDate.setMinutes(selectedTime.getMinutes());
-      setDueDate(newDate);
+  const handleSave = async () => {
+    if (!name.trim()) {
+      Alert.alert('Error', 'Please enter a task name');
+      return;
+    }
+
+    const taskData = {
+      name: name.trim(),
+      description: description.trim(),
+      dueDate: formatDate(dueDate),
+      dueTime: formatTime(dueTime),
+      importance,
+      difficulty,
+    };
+
+    try {
+      await addTask(taskData);
+      Alert.alert('Success', 'Task added successfully!');
+      onClose();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add task');
+      console.error(error);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <View style={styles.header}>
-        <Pressable onPress={onClose}>
-          <Text style={styles.headerButton}>Cancel</Text>
-        </Pressable>
+        <TouchableOpacity onPress={onClose}>
+          <Text style={styles.cancelButton}>Cancel</Text>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>New Task</Text>
-        <Pressable onPress={handleSave}>
-          <Text style={[styles.headerButton, { color: colors.primary }]}>Save</Text>
-        </Pressable>
+        <TouchableOpacity onPress={handleSave}>
+          <Text style={styles.saveButton}>Save</Text>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Task Name</Text>
-          <TextInput 
-            style={styles.input} 
-            value={name} 
-            onChangeText={setName} 
-            placeholder="Enter task name"
-            placeholderTextColor={colors.textSecondary}
-          />
-        </View>
+      <ScrollView style={styles.content}>
+        <Text style={styles.label}>Task Name</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter task name"
+          placeholderTextColor={colors.textSecondary}
+          value={name}
+          onChangeText={setName}
+        />
 
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Description</Text>
-          <TextInput 
-            style={[styles.input, styles.textArea]} 
-            value={description} 
-            onChangeText={setDescription} 
-            placeholder="Enter description"
-            placeholderTextColor={colors.textSecondary}
-            multiline
-            numberOfLines={4}
-          />
-        </View>
+        <Text style={styles.label}>Description</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Enter description"
+          placeholderTextColor={colors.textSecondary}
+          value={description}
+          onChangeText={setDescription}
+          multiline
+          numberOfLines={4}
+        />
 
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Due Date</Text>
-          <Pressable style={styles.input} onPress={() => setShowDatePicker(true)}>
-            <Text style={styles.inputText}>{dueDate.toLocaleDateString()}</Text>
-          </Pressable>
-        </View>
+        <Text style={styles.label}>Due Date</Text>
+        <TouchableOpacity
+          style={styles.input}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text style={styles.inputText}>{formatDate(dueDate)}</Text>
+        </TouchableOpacity>
 
         {showDatePicker && (
-          <DateTimePicker value={dueDate} mode="date" onChange={handleDateChange} />
+          <DateTimePicker
+            value={dueDate}
+            mode="date"
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowDatePicker(Platform.OS === 'ios');
+              if (selectedDate) setDueDate(selectedDate);
+            }}
+          />
         )}
 
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Due Time</Text>
-          <Pressable style={styles.input} onPress={() => setShowTimePicker(true)}>
-            <Text style={styles.inputText}>{dueDate.toLocaleTimeString()}</Text>
-          </Pressable>
-        </View>
+        <Text style={styles.label}>Due Time</Text>
+        <TouchableOpacity
+          style={styles.input}
+          onPress={() => setShowTimePicker(true)}
+        >
+          <Text style={styles.inputText}>{formatTime(dueTime)}</Text>
+        </TouchableOpacity>
 
         {showTimePicker && (
-          <DateTimePicker value={dueDate} mode="time" onChange={handleTimeChange} />
+          <DateTimePicker
+            value={dueTime}
+            mode="time"
+            display="default"
+            onChange={(event, selectedTime) => {
+              setShowTimePicker(Platform.OS === 'ios');
+              if (selectedTime) setDueTime(selectedTime);
+            }}
+          />
         )}
 
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Importance: {importance}</Text>
-          <Slider
-            style={styles.slider}
-            minimumValue={1}
-            maximumValue={5}
-            step={1}
-            value={importance}
-            onValueChange={setImportance}
-            minimumTrackTintColor={colors.primary}
-            maximumTrackTintColor={colors.border}
-          />
+        <Text style={styles.label}>Importance: {importance}</Text>
+        <View style={styles.sliderContainer}>
+          {[1, 2, 3, 4, 5].map((value) => (
+            <TouchableOpacity
+              key={value}
+              style={[
+                styles.sliderButton,
+                importance === value && styles.sliderButtonActive,
+              ]}
+              onPress={() => setImportance(value)}
+            >
+              <Text
+                style={[
+                  styles.sliderButtonText,
+                  importance === value && styles.sliderButtonTextActive,
+                ]}
+              >
+                {value}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Difficulty: {difficulty}</Text>
-          <Slider
-            style={styles.slider}
-            minimumValue={1}
-            maximumValue={5}
-            step={1}
-            value={difficulty}
-            onValueChange={setDifficulty}
-            minimumTrackTintColor={colors.primary}
-            maximumTrackTintColor={colors.border}
-          />
+        <Text style={styles.label}>Difficulty: {difficulty}</Text>
+        <View style={styles.sliderContainer}>
+          {[1, 2, 3, 4, 5].map((value) => (
+            <TouchableOpacity
+              key={value}
+              style={[
+                styles.sliderButton,
+                difficulty === value && styles.sliderButtonActive,
+              ]}
+              onPress={() => setDifficulty(value)}
+            >
+              <Text
+                style={[
+                  styles.sliderButtonText,
+                  difficulty === value && styles.sliderButtonTextActive,
+                ]}
+              >
+                {value}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
+  container: {
+    flex: 1,
     backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 60,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: colors.text,
   },
-  headerButton: {
+  cancelButton: {
     fontSize: 16,
+    color: colors.textSecondary,
+  },
+  saveButton: {
+    fontSize: 16,
+    color: colors.primary,
     fontWeight: '600',
-    color: colors.text,
   },
   content: {
     flex: 1,
     padding: 20,
   },
-  formGroup: {
-    marginBottom: 20,
-  },
-  label: { 
-    fontSize: 14,
+  label: {
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
+    marginTop: 16,
   },
-  input: { 
+  input: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 8,
+    padding: 12,
     fontSize: 16,
     color: colors.text,
     borderWidth: 1,
@@ -191,8 +242,31 @@ const styles = StyleSheet.create({
     height: 100,
     textAlignVertical: 'top',
   },
-  slider: { 
-    width: '100%', 
-    height: 40,
+  sliderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  sliderButton: {
+    flex: 1,
+    padding: 12,
+    marginHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  sliderButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sliderButtonText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  sliderButtonTextActive: {
+    color: 'white',
+    fontWeight: '600',
   },
 });

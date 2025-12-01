@@ -1,409 +1,622 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-  ScrollView,
-  SafeAreaView,
   StyleSheet,
+  ScrollView,
+  TouchableOpacity,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { addDays, addWeeks, subWeeks, startOfWeek, isSameDay, format } from 'date-fns';
 import { colors } from '../constants/colors';
+import { calculateQuadrant } from '../utils/eisenhowerUtils';
 
-const taskColors = [colors.doNow, colors.scheduleNow, colors.keepInMind, colors.eliminate];
+interface Task {
+  id: string;
+  name: string;
+  description: string;
+  dueDate: string;
+  dueTime: string;
+  importance: number;
+  difficulty: number;
+  isCompleted: boolean;
+  completedAt: string | null;
+  createdAt: string;
+}
 
-export type Task = {
-  title: string;
-  date: Date;
-  color: string;
-  startTime: Date;
-  endTime: Date;
-};
+interface CalendarScreenProps {
+  tasks: Task[];
+  onNavigateToNewTask: () => void;
+}
 
-export default function CalendarScreen() {
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [newTask, setNewTask] = useState<Task>({
-    title: '',
-    date: new Date(),
-    color: taskColors[0],
-    startTime: new Date(),
-    endTime: new Date(),
-  });
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
+export default function CalendarScreen({ tasks, onNavigateToNewTask }: CalendarScreenProps) {
   const [viewMode, setViewMode] = useState<'weekly' | 'monthly'>('weekly');
+  const [currentWeekStart, setCurrentWeekStart] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [tasksByDate, setTasksByDate] = useState<{[key: string]: Task[]}>({});
 
-  const handleAddTask = () => {
-    if (!newTask.title.trim()) return;
-    setTasks([...tasks, newTask]);
-    setModalVisible(false);
-    setNewTask({
-      title: '',
-      date: new Date(),
-      color: taskColors[0],
-      startTime: new Date(),
-      endTime: new Date(),
+  useEffect(() => {
+    organizeTasksByDate();
+  }, [tasks]);
+
+  const organizeTasksByDate = () => {
+    const organized: {[key: string]: Task[]} = {};
+    
+    tasks.forEach(task => {
+      const dateKey = task.dueDate;
+      if (!organized[dateKey]) {
+        organized[dateKey] = [];
+      }
+      organized[dateKey].push(task);
     });
+
+    // Sort tasks within each date by time
+    Object.keys(organized).forEach(dateKey => {
+      organized[dateKey].sort((a, b) => {
+        return a.dueTime.localeCompare(b.dueTime);
+      });
+    });
+
+    setTasksByDate(organized);
   };
 
+  const getWeekDates = () => {
+    const dates = [];
+    const start = new Date(currentWeekStart);
+    start.setDate(start.getDate() - start.getDay());
+    
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + i);
+      dates.push(date);
+    }
+    
+    return dates;
+  };
+
+  const getMonthDays = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    
+    // First day of month
+    const firstDay = new Date(year, month, 1);
+    // Last day of month
+    const lastDay = new Date(year, month + 1, 0);
+    
+    // Days to show before first day (to fill the week)
+    const startPadding = firstDay.getDay();
+    
+    // Total days to show
+    const daysInMonth = lastDay.getDate();
+    const totalDays = startPadding + daysInMonth;
+    const weeksNeeded = Math.ceil(totalDays / 7);
+    
+    const days = [];
+    
+    // Add padding days from previous month
+    for (let i = startPadding - 1; i >= 0; i--) {
+      const date = new Date(year, month, -i);
+      days.push({ date, isCurrentMonth: false });
+    }
+    
+    // Add days of current month
+    for (let i = 1; i <= daysInMonth; i++) {
+      const date = new Date(year, month, i);
+      days.push({ date, isCurrentMonth: true });
+    }
+    
+    // Add padding days from next month
+    const remainingDays = (weeksNeeded * 7) - days.length;
+    for (let i = 1; i <= remainingDays; i++) {
+      const date = new Date(year, month + 1, i);
+      days.push({ date, isCurrentMonth: false });
+    }
+    
+    return days;
+  };
+
+  const formatDate = (date: Date) => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = days[date.getDay()];
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${dayName} ${month}/${day}/${year}`;
+  };
+
+  const formatDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatMonthYear = (date: Date) => {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                    'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${months[date.getMonth()]} ${date.getFullYear()}`;
+  };
+
+  const getWeekLabel = () => {
+    const start = new Date(currentWeekStart);
+    start.setDate(start.getDate() - start.getDay());
+    const month = (start.getMonth() + 1).toString().padStart(2, '0');
+    const day = start.getDate().toString().padStart(2, '0');
+    const year = start.getFullYear();
+    return `Week of ${month}/${day}/${year}`;
+  };
+
+  const goToPreviousWeek = () => {
+    const newDate = new Date(currentWeekStart);
+    newDate.setDate(newDate.getDate() - 7);
+    setCurrentWeekStart(newDate);
+  };
+
+  const goToNextWeek = () => {
+    const newDate = new Date(currentWeekStart);
+    newDate.setDate(newDate.getDate() + 7);
+    setCurrentWeekStart(newDate);
+  };
+
+  const goToPreviousMonth = () => {
+    const newDate = new Date(currentMonth);
+    newDate.setMonth(newDate.getMonth() - 1);
+    setCurrentMonth(newDate);
+  };
+
+  const goToNextMonth = () => {
+    const newDate = new Date(currentMonth);
+    newDate.setMonth(newDate.getMonth() + 1);
+    setCurrentMonth(newDate);
+  };
+
+  const getQuadrantColor = (task: Task) => {
+    const quadrant = calculateQuadrant(task.difficulty, task.importance);
+    const quadrantColors = {
+      1: colors.quadrant1,
+      2: colors.quadrant2,
+      3: colors.quadrant3,
+      4: colors.quadrant4,
+    };
+    return quadrantColors[quadrant] || colors.border;
+  };
+
+  const hasTasksOnDate = (dateKey: string) => {
+    return tasksByDate[dateKey] && tasksByDate[dateKey].length > 0;
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
+  };
+
+  const renderTask = (task: Task) => (
+    <View 
+      key={task.id} 
+      style={[
+        styles.taskItem,
+        { borderLeftColor: getQuadrantColor(task) },
+        task.isCompleted && styles.taskCompleted
+      ]}
+    >
+      <Text style={[styles.taskTime, task.isCompleted && styles.taskTextCompleted]}>
+        {task.dueTime}
+      </Text>
+      <Text style={[styles.taskName, task.isCompleted && styles.taskTextCompleted]}>
+        {task.name}
+      </Text>
+    </View>
+  );
+
   const renderWeeklyView = () => {
-    const startOfCurrentWeek = startOfWeek(selectedDate);
-    const days = Array.from({ length: 7 }, (_, i) => addDays(startOfCurrentWeek, i));
+    const weekDates = getWeekDates();
 
     return (
-      <ScrollView style={styles.weeklyContainer} showsVerticalScrollIndicator={false}>
+      <>
         <View style={styles.weekNavigation}>
-          <TouchableOpacity onPress={() => setSelectedDate(subWeeks(selectedDate, 1))}>
-            <Text style={styles.weekNavButton}>◀</Text>
+          <TouchableOpacity onPress={goToPreviousWeek} style={styles.navArrow}>
+            <Text style={styles.navArrowText}>◀</Text>
           </TouchableOpacity>
-          <Text style={styles.weekTitle}>
-            Week of {format(startOfCurrentWeek, 'MM/dd/yyyy')}
-          </Text>
-          <TouchableOpacity onPress={() => setSelectedDate(addWeeks(selectedDate, 1))}>
-            <Text style={styles.weekNavButton}>▶</Text>
+          <Text style={styles.weekLabel}>{getWeekLabel()}</Text>
+          <TouchableOpacity onPress={goToNextWeek} style={styles.navArrow}>
+            <Text style={styles.navArrowText}>▶</Text>
           </TouchableOpacity>
         </View>
 
-        {days.map(day => {
-          const dayTasks = tasks.filter(t => isSameDay(t.date, day));
-          return (
-            <View key={day.toString()} style={styles.dayCard}>
-              <Text style={styles.dayHeader}>{format(day, 'EEEE MM/dd/yyyy')}</Text>
-              {dayTasks.length > 0 ? (
-                dayTasks.map((task, idx) => (
-                  <View
-                    key={idx}
-                    style={[styles.eventCard, { borderLeftColor: task.color }]}
-                  >
-                    <Text style={styles.eventTitle}>{task.title}</Text>
-                    <Text style={styles.eventTime}>
-                      {format(task.startTime, 'hh:mm a')} - {format(task.endTime, 'hh:mm a')}
-                    </Text>
+        <ScrollView style={styles.content}>
+          {weekDates.map((date, index) => {
+            const dateKey = formatDateKey(date);
+            const tasksForDate = tasksByDate[dateKey] || [];
+
+            return (
+              <View key={index} style={styles.dayContainer}>
+                <Text style={styles.dayLabel}>{formatDate(date)}</Text>
+                
+                {tasksForDate.length === 0 ? (
+                  <Text style={styles.noEvents}>No events</Text>
+                ) : (
+                  <View style={styles.tasksList}>
+                    {tasksForDate.map(task => renderTask(task))}
                   </View>
-                ))
-              ) : (
-                <Text style={styles.emptyText}>No events</Text>
-              )}
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
+      </>
+    );
+  };
+
+  const renderMonthlyView = () => {
+    const monthDays = getMonthDays();
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    return (
+      <>
+        <View style={styles.monthNavigation}>
+          <TouchableOpacity onPress={goToPreviousMonth} style={styles.navArrow}>
+            <Text style={styles.navArrowText}>◀</Text>
+          </TouchableOpacity>
+          <Text style={styles.monthLabel}>{formatMonthYear(currentMonth)}</Text>
+          <TouchableOpacity onPress={goToNextMonth} style={styles.navArrow}>
+            <Text style={styles.navArrowText}>▶</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.monthContainer}>
+          {/* Day names header */}
+          <View style={styles.dayNamesRow}>
+            {dayNames.map((name, index) => (
+              <View key={index} style={styles.dayNameCell}>
+                <Text style={styles.dayNameText}>{name}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Calendar grid */}
+          <View style={styles.monthGrid}>
+            {monthDays.map((dayInfo, index) => {
+              const dateKey = formatDateKey(dayInfo.date);
+              const hasTasks = hasTasksOnDate(dateKey);
+              const today = isToday(dayInfo.date);
+
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.monthDayCell}
+                  onPress={() => setSelectedDate(dateKey)}
+                >
+                  <View style={[
+                    styles.monthDayContent,
+                    today && styles.monthDayToday,
+                    selectedDate === dateKey && styles.monthDaySelected,
+                  ]}>
+                    <Text style={[
+                      styles.monthDayNumber,
+                      !dayInfo.isCurrentMonth && styles.monthDayNumberOther,
+                      today && styles.monthDayNumberToday,
+                      selectedDate === dateKey && styles.monthDayNumberSelected,
+                    ]}>
+                      {dayInfo.date.getDate()}
+                    </Text>
+                    {hasTasks && (
+                      <View style={styles.taskDots}>
+                        {tasksByDate[dateKey].slice(0, 3).map((task, i) => (
+                          <View
+                            key={i}
+                            style={[
+                              styles.taskDot,
+                              { backgroundColor: getQuadrantColor(task) }
+                            ]}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Selected date tasks */}
+          {selectedDate && tasksByDate[selectedDate] && (
+            <View style={styles.selectedDateTasks}>
+              <View style={styles.selectedDateHeader}>
+                <Text style={styles.selectedDateTitle}>
+                  {formatDate(new Date(selectedDate))}
+                </Text>
+                <TouchableOpacity onPress={() => setSelectedDate(null)}>
+                  <Text style={styles.closeButton}>×</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.selectedTasksList}>
+                {tasksByDate[selectedDate].map(task => renderTask(task))}
+              </ScrollView>
             </View>
-          );
-        })}
-      </ScrollView>
+          )}
+        </View>
+      </>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Calendar</Text>
-        <TouchableOpacity onPress={() => setModalVisible(true)}>
-          <Text style={[styles.headerButton, { color: colors.primary }]}>+ Add</Text>
+        <TouchableOpacity onPress={onNavigateToNewTask}>
+          <Text style={styles.addButton}>+ Add</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.viewModeContainer}>
-        <TouchableOpacity 
-          style={[styles.viewModeButton, viewMode === 'weekly' && styles.viewModeButtonActive]}
+        <TouchableOpacity
+          style={[
+            styles.viewModeButton,
+            viewMode === 'weekly' && styles.viewModeButtonActive,
+          ]}
           onPress={() => setViewMode('weekly')}
         >
-          <Text style={[styles.viewModeText, viewMode === 'weekly' && styles.viewModeTextActive]}>
+          <Text
+            style={[
+              styles.viewModeText,
+              viewMode === 'weekly' && styles.viewModeTextActive,
+            ]}
+          >
             Weekly
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.viewModeButton, viewMode === 'monthly' && styles.viewModeButtonActive]}
+        <TouchableOpacity
+          style={[
+            styles.viewModeButton,
+            viewMode === 'monthly' && styles.viewModeButtonActive,
+          ]}
           onPress={() => setViewMode('monthly')}
         >
-          <Text style={[styles.viewModeText, viewMode === 'monthly' && styles.viewModeTextActive]}>
+          <Text
+            style={[
+              styles.viewModeText,
+              viewMode === 'monthly' && styles.viewModeTextActive,
+            ]}
+          >
             Monthly
           </Text>
         </TouchableOpacity>
       </View>
 
-      {viewMode === 'weekly' ? renderWeeklyView() : (
-        <View style={styles.comingSoon}>
-          <Text style={styles.comingSoonText}>Monthly view coming soon</Text>
-        </View>
-      )}
-
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Event</Text>
-            
-            <TextInput
-              placeholder="Event Title"
-              value={newTask.title}
-              onChangeText={t => setNewTask({ ...newTask, title: t })}
-              style={styles.input}
-              placeholderTextColor={colors.textSecondary}
-            />
-
-            <Text style={styles.modalLabel}>Select Color:</Text>
-            <View style={styles.colorPicker}>
-              {taskColors.map(c => (
-                <TouchableOpacity
-                  key={c}
-                  onPress={() => setNewTask({ ...newTask, color: c })}
-                  style={[
-                    styles.colorOption,
-                    { backgroundColor: c },
-                    newTask.color === c && styles.colorOptionSelected
-                  ]}
-                />
-              ))}
-            </View>
-
-            <TouchableOpacity
-              onPress={() => setShowStartPicker(true)}
-              style={styles.input}
-            >
-              <Text style={styles.inputText}>Start: {format(newTask.startTime, 'hh:mm a')}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setShowEndPicker(true)}
-              style={styles.input}
-            >
-              <Text style={styles.inputText}>End: {format(newTask.endTime, 'hh:mm a')}</Text>
-            </TouchableOpacity>
-
-            {showStartPicker && (
-              <DateTimePicker
-                value={newTask.startTime}
-                mode="time"
-                display="spinner"
-                onChange={(_, time) => {
-                  setShowStartPicker(false);
-                  if (time) setNewTask({ ...newTask, startTime: time });
-                }}
-              />
-            )}
-
-            {showEndPicker && (
-              <DateTimePicker
-                value={newTask.endTime}
-                mode="time"
-                display="spinner"
-                onChange={(_, time) => {
-                  setShowEndPicker(false);
-                  if (time) setNewTask({ ...newTask, endTime: time });
-                }}
-              />
-            )}
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                onPress={() => setModalVisible(false)}
-                style={styles.modalButton}
-              >
-                <Text style={styles.modalButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={handleAddTask}
-                style={[styles.modalButton, styles.modalButtonPrimary]}
-              >
-                <Text style={[styles.modalButtonText, { color: '#fff' }]}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+      {viewMode === 'weekly' ? renderWeeklyView() : renderMonthlyView()}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
+  container: {
+    flex: 1,
     backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 60,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: 'bold',
     color: colors.text,
   },
-  headerButton: {
+  addButton: {
     fontSize: 16,
+    color: colors.primary,
     fontWeight: '600',
   },
   viewModeContainer: {
     flexDirection: 'row',
     padding: 16,
     gap: 12,
-    backgroundColor: colors.surface,
   },
   viewModeButton: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    padding: 12,
     borderRadius: 12,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     alignItems: 'center',
   },
   viewModeButtonActive: {
     backgroundColor: colors.primary,
   },
   viewModeText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.textSecondary,
   },
   viewModeTextActive: {
-    color: '#fff',
-  },
-  weeklyContainer: {
-    flex: 1,
-    padding: 16,
+    color: 'white',
   },
   weekNavigation: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'space-between',
+    padding: 16,
     backgroundColor: colors.surface,
-    padding: 12,
+    marginHorizontal: 16,
     borderRadius: 12,
+    marginBottom: 16,
   },
-  weekNavButton: {
+  monthNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: colors.surface,
+    marginHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  navArrow: {
+    padding: 8,
+  },
+  navArrowText: {
     fontSize: 20,
     color: colors.primary,
-    fontWeight: '600',
   },
-  weekTitle: {
+  weekLabel: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
   },
-  dayCard: {
+  monthLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  dayContainer: {
     backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
   },
-  dayHeader: {
-    fontSize: 16,
+  dayLabel: {
+    fontSize: 18,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 12,
   },
-  eventCard: {
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderLeftWidth: 4,
-  },
-  eventTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  eventTime: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  emptyText: {
+  noEvents: {
     fontSize: 14,
     color: colors.textSecondary,
     fontStyle: 'italic',
     textAlign: 'center',
+    paddingVertical: 8,
   },
-  comingSoon: {
-    flex: 1,
-    justifyContent: 'center',
+  tasksList: {
+    gap: 8,
+  },
+  taskItem: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 12,
+    borderLeftWidth: 4,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
   },
-  comingSoonText: {
-    fontSize: 16,
+  taskCompleted: {
+    opacity: 0.5,
+  },
+  taskTime: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+    minWidth: 60,
+  },
+  taskName: {
+    fontSize: 14,
+    color: colors.text,
+    flex: 1,
+  },
+  taskTextCompleted: {
+    textDecorationLine: 'line-through',
     color: colors.textSecondary,
   },
-  modalOverlay: {
+  // Monthly View Styles
+  monthContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
   },
-  modalContent: {
+  dayNamesRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  dayNameCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  dayNameText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  monthDayCell: {
+    width: '14.28%', // 100% / 7 days
+    aspectRatio: 1,
+    padding: 2,
+  },
+  monthDayContent: {
+    flex: 1,
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 4,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 20,
-    textAlign: 'center',
+  monthDayToday: {
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
-  modalLabel: {
+  monthDaySelected: {
+    backgroundColor: colors.primary,
+  },
+  monthDayNumber: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 8,
-    marginTop: 12,
   },
-  input: {
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+  monthDayNumberOther: {
+    color: colors.textSecondary,
+    opacity: 0.4,
   },
-  inputText: {
-    fontSize: 16,
-    color: colors.text,
+  monthDayNumberToday: {
+    color: colors.primary,
   },
-  colorPicker: {
+  monthDayNumberSelected: {
+    color: 'white',
+  },
+  taskDots: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
+    gap: 2,
+    marginTop: 2,
   },
-  colorOption: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'transparent',
+  taskDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
-  colorOptionSelected: {
-    borderColor: colors.text,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 14,
+  selectedDateTasks: {
+    marginTop: 16,
+    backgroundColor: colors.surface,
     borderRadius: 12,
+    padding: 16,
+    maxHeight: 300,
+  },
+  selectedDateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    marginBottom: 12,
   },
-  modalButtonPrimary: {
-    backgroundColor: colors.primary,
-  },
-  modalButtonText: {
+  selectedDateTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+  },
+  closeButton: {
+    fontSize: 28,
+    color: colors.textSecondary,
+    fontWeight: '300',
+  },
+  selectedTasksList: {
+    maxHeight: 200,
   },
 });

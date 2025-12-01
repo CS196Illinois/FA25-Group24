@@ -1,13 +1,12 @@
-// src/constants/colors.js
 export const colors = {
-    primary: '#8000ff',
-    background: '#f5f5f7',
-    surface: '#ffffff',
-    doNow: '#7bd192',
-    scheduleNow: '#6CB2F4',
-    keepInMind: '#FFB98B',
-    eliminate: '#E78A8A',
-    text: '#1d1d1f',
-    textSecondary: '#86868b',
-    border: '#d2d2d7',
-  };
+  primary: '#6366f1',
+  background: '#f5f5f5',
+  surface: '#ffffff',
+  text: '#1f2937',
+  textSecondary: '#6b7280',
+  border: '#e5e7eb',
+  quadrant1: '#4ade80',  // Green - Do Now
+  quadrant2: '#60a5fa',  // Blue - Schedule
+  quadrant3: '#fb923c',  // Orange - Keep in Mind
+  quadrant4: '#f87171',  // Red - Eliminate
+};

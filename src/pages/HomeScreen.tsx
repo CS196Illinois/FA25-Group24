@@ -1,317 +1,276 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, FlatList, Modal, ScrollView, SafeAreaView } from 'react-native';
-import NewTask from './NewTask';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { colors } from '../constants/colors';
+import { calculateQuadrant, getQuadrantName } from '../utils/eisenhowerUtils';
+import { deleteTask, toggleTaskComplete } from '../services/taskService';
 
-export type Task = {
+export interface Task {
+  id: string;
   name: string;
-  description?: string;
-  dueDate?: string;
-  quadrant: 'doNow' | 'scheduleNow' | 'keepInMind' | 'eliminate';
-};
+  description: string;
+  dueDate: string;
+  dueTime: string;
+  importance: number;
+  difficulty: number;
+  isCompleted: boolean;
+  completedAt: string | null;
+  createdAt: string;
+}
 
-type HomeScreenProps = {
+interface HomeScreenProps {
   tasks: Task[];
-  addTask?: (task: Task) => void;
-};
+  addTask: (task: any) => void;
+  onTasksChange: () => void;
+  onNavigateToNewTask: () => void;
+}
 
-export default function HomeScreen({ tasks: initialTasks, addTask }: HomeScreenProps) {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks || []);
-  const [showNewTask, setShowNewTask] = useState(false);
-  const [currentQuadrant, setCurrentQuadrant] = useState<Task['quadrant']>('doNow');
-  const [selectedQuadrant, setSelectedQuadrant] = useState<Task['quadrant'] | null>(null);
+export default function HomeScreen({ tasks, addTask, onTasksChange, onNavigateToNewTask }: HomeScreenProps) {
+  const [tasksByQuadrant, setTasksByQuadrant] = useState<{[key: number]: Task[]}>({
+    1: [],
+    2: [],
+    3: [],
+    4: []
+  });
 
-  const handleAddTask = (task: Task) => {
-    setTasks(prev => [...prev, task]);
-    addTask?.(task);
-    setShowNewTask(false);
+  useEffect(() => {
+    organizeTasksByQuadrant();
+  }, [tasks]);
+
+  const organizeTasksByQuadrant = () => {
+    const organized: {[key: number]: Task[]} = {
+      1: [],
+      2: [],
+      3: [],
+      4: []
+    };
+
+    tasks.forEach(task => {
+      const quadrant = calculateQuadrant(task.difficulty, task.importance);
+      organized[quadrant].push(task);
+    });
+
+    // Sort each quadrant by due date
+    Object.keys(organized).forEach(key => {
+      const quadrantNum = parseInt(key);
+      organized[quadrantNum].sort((a, b) => {
+        const dateA = new Date(`${a.dueDate} ${a.dueTime}`);
+        const dateB = new Date(`${b.dueDate} ${b.dueTime}`);
+        return dateA.getTime() - dateB.getTime();
+      });
+    });
+
+    setTasksByQuadrant(organized);
   };
 
-  const quadrants: { key: Task['quadrant']; title: string; subtitle: string; color: string }[] = [
-    { key: 'doNow', title: 'Do Now', subtitle: 'Important and Urgent', color: colors.doNow },
-    { key: 'scheduleNow', title: 'Schedule', subtitle: 'Important, but not Urgent', color: colors.scheduleNow },
-    { key: 'keepInMind', title: 'Keep in Mind', subtitle: 'Urgent, but not Important', color: colors.keepInMind },
-    { key: 'eliminate', title: 'Eliminate', subtitle: 'Not Urgent or Important', color: colors.eliminate },
-  ];
+  const handleDeleteTask = async (taskId: string, taskName: string) => {
+    Alert.alert(
+      'Delete Task',
+      `Are you sure you want to delete "${taskName}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteTask(taskId);
+            onTasksChange();
+          }
+        }
+      ]
+    );
+  };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {selectedQuadrant === null && (
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>My Tasks</Text>
-          <Pressable style={styles.profileButton} onPress={() => {/* Handle profile press */}}>
-            <Text style={styles.profileIcon}>👤</Text>
-          </Pressable>
-        </View>
-      )}
+  const handleToggleComplete = async (taskId: string) => {
+    await toggleTaskComplete(taskId);
+    onTasksChange();
+  };
 
-      <View style={styles.content}>
-        {quadrants.map(q => (
-          (!selectedQuadrant || selectedQuadrant === q.key) && (
-            <Pressable
-              key={q.key}
-              style={[
-                styles.quadrant,
-                { backgroundColor: q.color },
-                selectedQuadrant === q.key && styles.quadrantExpanded
-              ]}
-              onPress={() => selectedQuadrant !== q.key && setSelectedQuadrant(q.key)}
-              disabled={selectedQuadrant === q.key}
-            >
-              {selectedQuadrant === q.key ? (
-                <View style={styles.expandedContainer}>
-                  <View style={styles.expandedHeader}>
-                    <Pressable onPress={() => setSelectedQuadrant(null)}>
-                      <Text style={styles.backButtonText}>← Back</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => {
-                        setCurrentQuadrant(q.key);
-                        setShowNewTask(true);
-                      }}
-                    >
-                      <Text style={styles.addButtonText}>+</Text>
-                    </Pressable>
-                  </View>
-
-                  <Text style={styles.expandedTitle}>{q.title}</Text>
-                  <Text style={styles.expandedSubtitle}>{q.subtitle}</Text>
-
-                  <ScrollView style={styles.expandedTaskList} showsVerticalScrollIndicator={true}>
-                    {tasks.filter(t => t.quadrant === q.key).length === 0 ? (
-                      <Text style={styles.emptyTextExpanded}>No tasks yet</Text>
-                    ) : (
-                      tasks.filter(t => t.quadrant === q.key).map((item, idx) => (
-                        <View key={idx}>
-                          <View style={styles.expandedTaskItem}>
-                            <Text style={styles.expandedTaskName}>{item.name}</Text>
-                            {item.description && (
-                              <Text style={styles.expandedTaskDescription}>{item.description}</Text>
-                            )}
-                            {item.dueDate && (
-                              <Text style={styles.expandedTaskDetail}>• Due Date: {item.dueDate}</Text>
-                            )}
-                          </View>
-                          {idx < tasks.filter(t => t.quadrant === q.key).length - 1 && (
-                            <View style={styles.taskDivider} />
-                          )}
-                        </View>
-                      ))
-                    )}
-                  </ScrollView>
-                </View>
-              ) : (
-                <>
-                  <Text style={styles.quadrantTitle}>{q.title}</Text>
-                  <Text style={styles.quadrantSubtitle}>{q.subtitle}</Text>
-
-                  <View style={styles.taskList}>
-                    {tasks.filter(t => t.quadrant === q.key).slice(0, 3).map((item, idx) => (
-                      <View key={idx} style={styles.taskRow}>
-                        <Text style={styles.taskText} numberOfLines={1}>
-                          • {item.name}
-                        </Text>
-                        {item.dueDate && (
-                          <Text style={styles.taskDate}>{item.dueDate}</Text>
-                        )}
-                      </View>
-                    ))}
-                    {tasks.filter(t => t.quadrant === q.key).length === 0 && (
-                      <Text style={styles.emptyTextCompact}>No tasks yet</Text>
-                    )}
-                  </View>
-                </>
-              )}
-            </Pressable>
-          )
-        ))}
+  const renderTask = (task: Task) => (
+    <View key={task.id} style={[styles.taskItem, task.isCompleted && styles.taskCompleted]}>
+      <TouchableOpacity 
+        style={styles.taskCheckbox}
+        onPress={() => handleToggleComplete(task.id)}
+      >
+        <Text style={styles.checkbox}>{task.isCompleted ? '✓' : '○'}</Text>
+      </TouchableOpacity>
+      
+      <View style={styles.taskContent}>
+        <Text style={[styles.taskName, task.isCompleted && styles.taskNameCompleted]}>
+          {task.name}
+        </Text>
+        <Text style={styles.taskTime}>
+          {task.dueDate} at {task.dueTime}
+        </Text>
       </View>
 
-      <Modal visible={showNewTask} animationType="slide" presentationStyle="pageSheet">
-        <NewTask
-          defaultQuadrant={currentQuadrant}
-          addTask={handleAddTask}
-          onClose={() => setShowNewTask(false)}
-        />
-      </Modal>
-    </SafeAreaView>
+      <TouchableOpacity 
+        style={styles.deleteButton}
+        onPress={() => handleDeleteTask(task.id, task.name)}
+      >
+        <Text style={styles.deleteButtonText}>×</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderQuadrant = (quadrant: number, title: string, subtitle: string, bgColor: string) => (
+    <View style={[styles.quadrant, { backgroundColor: bgColor }]}>
+      <View style={styles.quadrantHeader}>
+        <Text style={styles.quadrantTitle}>{title}</Text>
+        <TouchableOpacity onPress={onNavigateToNewTask}>
+          <Text style={styles.addButton}>+</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.quadrantSubtitle}>{subtitle}</Text>
+      
+      <ScrollView style={styles.taskList}>
+        {tasksByQuadrant[quadrant].length === 0 ? (
+          <Text style={styles.noTasks}>No tasks yet</Text>
+        ) : (
+          tasksByQuadrant[quadrant].map(task => renderTask(task))
+        )}
+      </ScrollView>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>My Tasks</Text>
+        <TouchableOpacity style={styles.profileButton}>
+          <View style={styles.profileIcon} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.content}>
+        {renderQuadrant(1, 'Do Now', 'Important and Urgent', colors.quadrant1)}
+        {renderQuadrant(2, 'Schedule', 'Important, but not Urgent', colors.quadrant2)}
+        {renderQuadrant(3, 'Keep in Mind', 'Urgent, but not Important', colors.quadrant3)}
+        {renderQuadrant(4, 'Eliminate', 'Not Urgent or Important', colors.quadrant4)}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
+  container: {
+    flex: 1,
     backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 60,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: 'bold',
     color: colors.text,
   },
   profileButton: {
-    backgroundColor: colors.surface,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 3,
   },
   profileIcon: {
-    fontSize: 24,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
-    justifyContent: 'space-between',
+    padding: 16,
   },
   quadrant: {
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 3,
-    flex: 1,
-    marginVertical: 6,
+    marginBottom: 16,
+    minHeight: 150,
   },
-  quadrantExpanded: {
-    flex: 1,
-    padding: 0,
-    marginVertical: 0,
-  },
-  expandedContainer: {
-    flex: 1,
-    padding: 20,
-  },
-  expandedHeader: {
+  quadrantHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
-  },
-  backButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 32,
-    fontWeight: '600',
-  },
-  expandedTitle: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#FFFFFF',
     marginBottom: 4,
   },
-  expandedSubtitle: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginBottom: 20,
-    fontWeight: '600',
-    opacity: 0.9,
+  quadrantTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
   },
-  expandedTaskList: {
-    flex: 1,
-  },
-  expandedTaskItem: {
-    paddingVertical: 12,
-  },
-  expandedTaskName: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 6,
-  },
-  expandedTaskDescription: {
-    fontSize: 15,
-    color: '#FFFFFF',
-    marginBottom: 8,
-    opacity: 0.95,
-  },
-  expandedTaskDetail: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginLeft: 8,
-    marginBottom: 3,
-    opacity: 0.9,
-  },
-  taskDivider: {
-    height: 1,
-    backgroundColor: '#FFFFFF',
-    opacity: 0.3,
-    marginVertical: 12,
-  },
-  emptyTextExpanded: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginTop: 40,
-    opacity: 0.7,
-  },
-  quadrantTitle: { 
-    fontSize: 24, 
-    fontWeight: '700', 
-    color: '#FFFFFF',
-    marginBottom: 4,
+  addButton: {
+    fontSize: 32,
+    color: 'white',
+    fontWeight: '300',
   },
   quadrantSubtitle: {
-    fontSize: 12,
-    color: '#FFFFFF',
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
     marginBottom: 12,
-    fontWeight: '600',
-    opacity: 0.9,
   },
   taskList: {
-    gap: 6,
+    flex: 1,
   },
-  taskRow: {
+  noTasks: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  taskItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  taskCompleted: {
+    opacity: 0.6,
+  },
+  taskCheckbox: {
+    marginRight: 12,
+  },
+  checkbox: {
+    fontSize: 20,
+    color: 'white',
+  },
+  taskContent: {
+    flex: 1,
+  },
+  taskName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: 'white',
     marginBottom: 2,
   },
-  taskText: {
-    fontSize: 13,
-    color: '#FFFFFF',
-    flex: 1,
-    fontWeight: '500',
+  taskNameCompleted: {
+    textDecorationLine: 'line-through',
   },
-  taskDate: {
+  taskTime: {
     fontSize: 12,
-    color: '#FFFFFF',
-    marginLeft: 10,
-    opacity: 0.9,
+    color: 'rgba(255,255,255,0.8)',
   },
-  emptyTextCompact: {
-    fontSize: 13,
-    color: '#FFFFFF',
-    fontStyle: 'italic',
-    opacity: 0.7,
+  deleteButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    fontSize: 20,
+    color: 'white',
+    fontWeight: '300',
   },
 });

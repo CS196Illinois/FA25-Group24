@@ -1,26 +1,82 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
-import HomeScreen, { Task } from './src/pages/HomeScreen';
+import HomeScreen from './src/pages/HomeScreen';
 import CalendarScreen from './src/pages/CalendarScreen';
 import PomodoroScreen from './src/pages/AboutScreen';
+import NewTask from './src/pages/NewTask';
 import { colors } from './src/constants/colors';
+import { getAllTasks, addTask as addTaskToStorage, cleanupOldCompletedTasks } from './src/services/taskService';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
+  const [showNewTask, setShowNewTask] = useState(false);
   const [tasks, setTasks] = useState([]);
 
-  const addTask = (task) => setTasks(prev => [...prev, task]);
+  useEffect(() => {
+    loadTasksFromStorage();
+    // Cleanup old completed tasks on app start
+    cleanupOldCompletedTasks();
+  }, []);
+
+  const loadTasksFromStorage = async () => {
+    try {
+      const storedTasks = await getAllTasks();
+      setTasks(storedTasks);
+      console.log('Loaded tasks:', storedTasks.length);
+    } catch (error) {
+      console.error('Error loading tasks:', error);
+    }
+  };
+
+  const addTask = async (taskData: any) => {
+    try {
+      const newTask = await addTaskToStorage(taskData);
+      setTasks(prev => [...prev, newTask]);
+      console.log('Task added successfully:', newTask.name);
+    } catch (error) {
+      console.error('Error adding task:', error);
+      throw error;
+    }
+  };
 
   const renderScreen = () => {
+    if (showNewTask) {
+      return (
+        <NewTask
+          addTask={addTask}
+          onClose={() => setShowNewTask(false)}
+        />
+      );
+    }
+
     switch (activeTab) {
       case 'home':
-        return <HomeScreen tasks={tasks} addTask={addTask} />;
+        return (
+          <HomeScreen
+            tasks={tasks}
+            addTask={addTask}
+            onTasksChange={loadTasksFromStorage}
+            onNavigateToNewTask={() => setShowNewTask(true)}
+          />
+        );
       case 'calendar':
-        return <CalendarScreen />;
-      case 'pomodoro':
-        return <PomodoroScreen addTask={addTask} />;
+  return (
+    <CalendarScreen
+      tasks={tasks}
+      onNavigateToNewTask={() => setShowNewTask(true)}
+    />
+  );
+    case 'pomodoro':
+        return <PomodoroScreen tasks={tasks} />;
       default:
-        return <HomeScreen tasks={tasks} addTask={addTask} />;
+        return (
+          <HomeScreen
+            tasks={tasks}
+            addTask={addTask}
+            onTasksChange={loadTasksFromStorage}
+            onNavigateToNewTask={() => setShowNewTask(true)}
+          />
+        );
     }
   };
 
@@ -28,31 +84,33 @@ export default function App() {
     <View style={styles.container}>
       {renderScreen()}
       
-      <View style={styles.bottomNav}>
-        <TouchableOpacity 
-          style={styles.navButton} 
-          onPress={() => setActiveTab('home')}
-        >
-          <Text style={[styles.navIcon, activeTab === 'home' && styles.navIconActive]}>⌂</Text>
-          <Text style={[styles.navLabel, activeTab === 'home' && styles.navLabelActive]}>Home</Text>
-        </TouchableOpacity>
+      {!showNewTask && (
+        <View style={styles.bottomNav}>
+          <TouchableOpacity 
+            style={styles.navButton} 
+            onPress={() => setActiveTab('home')}
+          >
+            <Text style={[styles.navIcon, activeTab === 'home' && styles.navIconActive]}>⌂</Text>
+            <Text style={[styles.navLabel, activeTab === 'home' && styles.navLabelActive]}>Home</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.navButton} 
-          onPress={() => setActiveTab('calendar')}
-        >
-          <Text style={[styles.navIcon, activeTab === 'calendar' && styles.navIconActive]}>📅</Text>
-          <Text style={[styles.navLabel, activeTab === 'calendar' && styles.navLabelActive]}>Calendar</Text>
-        </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.navButton} 
+            onPress={() => setActiveTab('calendar')}
+          >
+            <Text style={[styles.navIcon, activeTab === 'calendar' && styles.navIconActive]}>📅</Text>
+            <Text style={[styles.navLabel, activeTab === 'calendar' && styles.navLabelActive]}>Calendar</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.navButton} 
-          onPress={() => setActiveTab('pomodoro')}
-        >
-          <Text style={[styles.navIcon, activeTab === 'pomodoro' && styles.navIconActive]}>⏱</Text>
-          <Text style={[styles.navLabel, activeTab === 'pomodoro' && styles.navLabelActive]}>Focus</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity 
+            style={styles.navButton} 
+            onPress={() => setActiveTab('pomodoro')}
+          >
+            <Text style={[styles.navIcon, activeTab === 'pomodoro' && styles.navIconActive]}>⏱</Text>
+            <Text style={[styles.navLabel, activeTab === 'pomodoro' && styles.navLabelActive]}>Focus</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
