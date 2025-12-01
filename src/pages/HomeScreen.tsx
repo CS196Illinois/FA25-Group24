@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { colors } from '../constants/colors';
 import { calculateQuadrant, getQuadrantName } from '../utils/eisenhowerUtils';
-import { deleteTask, toggleTaskComplete } from '../services/taskService';
+import { deleteTask, toggleTaskComplete } from '../services/supabaseTaskService';
 
 export interface Task {
   id: string;
@@ -115,20 +115,19 @@ export default function HomeScreen({ tasks, addTask, onTasksChange, onNavigateTo
   const renderQuadrant = (quadrant: number, title: string, subtitle: string, bgColor: string) => (
     <View style={[styles.quadrant, { backgroundColor: bgColor }]}>
       <View style={styles.quadrantHeader}>
-        <Text style={styles.quadrantTitle}>{title}</Text>
-        <TouchableOpacity onPress={onNavigateToNewTask}>
-          <Text style={styles.addButton}>+</Text>
-        </TouchableOpacity>
+        <View>
+          <Text style={styles.quadrantTitle}>{title}</Text>
+          <Text style={styles.quadrantSubtitle}>{subtitle}</Text>
+        </View>
       </View>
-      <Text style={styles.quadrantSubtitle}>{subtitle}</Text>
       
-      <ScrollView style={styles.taskList}>
+      <View style={styles.taskList}>
         {tasksByQuadrant[quadrant].length === 0 ? (
           <Text style={styles.noTasks}>No tasks yet</Text>
         ) : (
           tasksByQuadrant[quadrant].map(task => renderTask(task))
         )}
-      </ScrollView>
+      </View>
     </View>
   );
 
@@ -136,12 +135,19 @@ export default function HomeScreen({ tasks, addTask, onTasksChange, onNavigateTo
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Tasks</Text>
-        <TouchableOpacity style={styles.profileButton}>
-          <View style={styles.profileIcon} />
+        <TouchableOpacity 
+          style={styles.addButton}
+          onPress={onNavigateToNewTask}
+        >
+          <Text style={styles.addButtonText}>+</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {renderQuadrant(1, 'Do Now', 'Important and Urgent', colors.quadrant1)}
         {renderQuadrant(2, 'Schedule', 'Important, but not Urgent', colors.quadrant2)}
         {renderQuadrant(3, 'Keep in Mind', 'Urgent, but not Important', colors.quadrant3)}
@@ -171,23 +177,26 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.text,
   },
-  profileButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.border,
+  addButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  profileIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
+  addButtonText: {
+    fontSize: 28,
+    color: 'white',
+    fontWeight: '300',
+    marginTop: -2,
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  scrollContent: {
     padding: 16,
+    paddingBottom: 32,
   },
   quadrant: {
     borderRadius: 16,
@@ -198,26 +207,21 @@ const styles = StyleSheet.create({
   quadrantHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   quadrantTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: 'white',
-  },
-  addButton: {
-    fontSize: 32,
-    color: 'white',
-    fontWeight: '300',
+    marginBottom: 4,
   },
   quadrantSubtitle: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.9)',
-    marginBottom: 12,
   },
   taskList: {
-    flex: 1,
+    gap: 8,
   },
   noTasks: {
     fontSize: 14,

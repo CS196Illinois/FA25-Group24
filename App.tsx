@@ -1,28 +1,52 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Session } from '@supabase/supabase-js';
 import HomeScreen from './src/pages/HomeScreen';
 import CalendarScreen from './src/pages/CalendarScreen';
 import PomodoroScreen from './src/pages/AboutScreen';
 import NewTask from './src/pages/NewTask';
+import LoginScreen from './src/pages/auth/LoginScreen';
+import SignupScreen from './src/pages/auth/SignupScreen';
 import { colors } from './src/constants/colors';
-import { getAllTasks, addTask as addTaskToStorage, cleanupOldCompletedTasks } from './src/services/taskService';
+import { supabase } from './src/services/supabase';
+import * as SupabaseTaskService from './src/services/supabaseTaskService';
 
 export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('home');
   const [showNewTask, setShowNewTask] = useState(false);
+  const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
   const [tasks, setTasks] = useState([]);
 
   useEffect(() => {
-    loadTasksFromStorage();
-    // Cleanup old completed tasks on app start
-    cleanupOldCompletedTasks();
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const loadTasksFromStorage = async () => {
+  useEffect(() => {
+    if (session) {
+      loadTasksFromCloud();
+      // Cleanup old completed tasks on app start
+      SupabaseTaskService.cleanupOldCompletedTasks();
+    }
+  }, [session]);
+
+  const loadTasksFromCloud = async () => {
     try {
-      const storedTasks = await getAllTasks();
-      setTasks(storedTasks);
-      console.log('Loaded tasks:', storedTasks.length);
+      const cloudTasks = await SupabaseTaskService.getAllTasks();
+      setTasks(cloudTasks);
+      console.log('Loaded tasks from cloud:', cloudTasks.length);
     } catch (error) {
       console.error('Error loading tasks:', error);
     }
@@ -30,7 +54,7 @@ export default function App() {
 
   const addTask = async (taskData: any) => {
     try {
-      const newTask = await addTaskToStorage(taskData);
+      const newTask = await SupabaseTaskService.addTask(taskData);
       setTasks(prev => [...prev, newTask]);
       console.log('Task added successfully:', newTask.name);
     } catch (error) {
@@ -39,6 +63,41 @@ export default function App() {
     }
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setTasks([]);
+    setActiveTab('home');
+  };
+
+  // Show loading screen while checking auth
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
+  // Show auth screens if not logged in
+  if (!session) {
+    if (authScreen === 'signup') {
+      return (
+        <SignupScreen
+          onSignupSuccess={() => setAuthScreen('login')}
+          onNavigateToLogin={() => setAuthScreen('login')}
+        />
+      );
+    }
+    return (
+      <LoginScreen
+        onLoginSuccess={() => {}}
+        onNavigateToSignup={() => setAuthScreen('signup')}
+      />
+    );
+  }
+
+  // Main app (user is logged in)
   const renderScreen = () => {
     if (showNewTask) {
       return (
@@ -55,25 +114,25 @@ export default function App() {
           <HomeScreen
             tasks={tasks}
             addTask={addTask}
-            onTasksChange={loadTasksFromStorage}
+            onTasksChange={loadTasksFromCloud}
             onNavigateToNewTask={() => setShowNewTask(true)}
           />
         );
       case 'calendar':
-  return (
-    <CalendarScreen
-      tasks={tasks}
-      onNavigateToNewTask={() => setShowNewTask(true)}
-    />
-  );
-    case 'pomodoro':
+        return (
+          <CalendarScreen
+            tasks={tasks}
+            onNavigateToNewTask={() => setShowNewTask(true)}
+          />
+        );
+      case 'pomodoro':
         return <PomodoroScreen tasks={tasks} />;
       default:
         return (
           <HomeScreen
             tasks={tasks}
             addTask={addTask}
-            onTasksChange={loadTasksFromStorage}
+            onTasksChange={loadTasksFromCloud}
             onNavigateToNewTask={() => setShowNewTask(true)}
           />
         );
@@ -109,6 +168,14 @@ export default function App() {
             <Text style={[styles.navIcon, activeTab === 'pomodoro' && styles.navIconActive]}>⏱</Text>
             <Text style={[styles.navLabel, activeTab === 'pomodoro' && styles.navLabelActive]}>Focus</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.navButton} 
+            onPress={handleLogout}
+          >
+            <Text style={styles.navIcon}>🚪</Text>
+            <Text style={styles.navLabel}>Logout</Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
@@ -119,6 +186,15 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1,
     backgroundColor: colors.background,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   bottomNav: { 
     flexDirection: 'row',

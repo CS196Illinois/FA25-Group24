@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  TextInput,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import { colors } from '../constants/colors';
 import { calculateQuadrant, getQuadrantName } from '../utils/eisenhowerUtils';
 
@@ -28,13 +28,24 @@ interface PomodoroScreenProps {
   tasks: Task[];
 }
 
+interface TaskSession {
+  taskId: string;
+  taskName: string;
+  duration: number; // in seconds
+  timestamp: string;
+}
+
 export default function PomodoroScreen({ tasks }: PomodoroScreenProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [selectedQuadrant, setSelectedQuadrant] = useState<number>(1);
-  const [timer, setTimer] = useState(60); // 1 minute in seconds for demo
+  const [workDuration, setWorkDuration] = useState(25); // minutes
+  const [breakDuration, setBreakDuration] = useState(5); // minutes
+  const [timer, setTimer] = useState(0); // seconds
   const [isRunning, setIsRunning] = useState(false);
-  const [breakDuration, setBreakDuration] = useState(5);
+  const [isBreak, setIsBreak] = useState(false);
   const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
+  const [sessions, setSessions] = useState<TaskSession[]>([]);
+  const [elapsedWorkTime, setElapsedWorkTime] = useState(0); // Track elapsed work time
 
   useEffect(() => {
     filterTasksByQuadrant();
@@ -46,59 +57,126 @@ export default function PomodoroScreen({ tasks }: PomodoroScreenProps) {
     if (isRunning && timer > 0) {
       interval = setInterval(() => {
         setTimer(prev => prev - 1);
+        
+        // Track work time (not break time)
+        if (!isBreak) {
+          setElapsedWorkTime(prev => prev + 1);
+        }
       }, 1000);
-    } else if (timer === 0) {
-      setIsRunning(false);
-      Alert.alert('Time\'s Up!', 'Great work! Time for a break.');
+    } else if (timer === 0 && isRunning) {
+      handleTimerComplete();
     }
 
     return () => clearInterval(interval);
   }, [isRunning, timer]);
 
-const filterTasksByQuadrant = () => {
-  console.log('All tasks:', tasks.length);
-  console.log('Selected quadrant:', selectedQuadrant);
-  
-  const filtered = tasks.filter(task => {
-    const quadrant = calculateQuadrant(task.difficulty, task.importance);
-    console.log(`Task: ${task.name}, Quadrant: ${quadrant}, Completed: ${task.isCompleted}`);
-    return quadrant === selectedQuadrant && !task.isCompleted;
-  });
-  
-  console.log('Filtered tasks:', filtered.length);
-  setFilteredTasks(filtered);
-  
-  // Auto-select first task if available
-  if (filtered.length > 0 && !selectedTaskId) {
-    setSelectedTaskId(filtered[0].id);
-  }
-};
+  const filterTasksByQuadrant = () => {
+    const filtered = tasks.filter(task => {
+      const quadrant = calculateQuadrant(task.difficulty, task.importance);
+      return quadrant === selectedQuadrant && !task.isCompleted;
+    });
+    setFilteredTasks(filtered);
+    
+    if (filtered.length > 0 && !selectedTaskId) {
+      setSelectedTaskId(filtered[0].id);
+    }
+  };
+
+  const handleTimerComplete = () => {
+    setIsRunning(false);
+    
+    if (isBreak) {
+      // Break completed
+      Alert.alert('Break Over!', 'Ready to get back to work?', [
+        { text: 'Start Work', onPress: () => startWork() }
+      ]);
+    } else {
+      // Work session completed - save it
+      saveSession();
+      Alert.alert('Great Work!', 'Time for a break!', [
+        { text: 'Start Break', onPress: () => startBreak() }
+      ]);
+    }
+  };
+
+  const saveSession = () => {
+    if (!selectedTaskId || elapsedWorkTime === 0) return;
+    
+    const task = filteredTasks.find(t => t.id === selectedTaskId);
+    if (!task) return;
+
+    const session: TaskSession = {
+      taskId: task.id,
+      taskName: task.name,
+      duration: elapsedWorkTime,
+      timestamp: new Date().toISOString(),
+    };
+
+    setSessions(prev => [session, ...prev]);
+    setElapsedWorkTime(0); // Reset elapsed time after saving
+  };
+
+  const startWork = () => {
+    if (!selectedTaskId) {
+      Alert.alert('No Task Selected', 'Please select a task first');
+      return;
+    }
+    setTimer(workDuration * 60);
+    setIsBreak(false);
+    setIsRunning(true);
+  };
+
+  const startBreak = () => {
+    setTimer(breakDuration * 60);
+    setIsBreak(true);
+    setIsRunning(true);
+  };
+
+  const pauseTimer = () => {
+    setIsRunning(false);
+  };
+
+  const resetTimer = () => {
+    // Save any elapsed work time before resetting
+    if (elapsedWorkTime > 0 && !isBreak) {
+      saveSession();
+    }
+    setIsRunning(false);
+    setTimer(isBreak ? breakDuration * 60 : workDuration * 60);
+    setElapsedWorkTime(0);
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const startCountdown = () => {
-    if (!selectedTaskId) {
-      Alert.alert('No Task Selected', 'Please select a task first');
-      return;
-    }
-    setIsRunning(true);
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins === 0) return `${secs}s`;
+    if (secs === 0) return `${mins}m`;
+    return `${mins}m ${secs}s`;
   };
 
-  const pauseCountdown = () => {
-    setIsRunning(false);
+  const getTodaySessions = () => {
+    const today = new Date().toDateString();
+    return sessions.filter(session => {
+      const sessionDate = new Date(session.timestamp).toDateString();
+      return sessionDate === today;
+    });
   };
 
-  const resetCountdown = () => {
-    setIsRunning(false);
-    setTimer(60); // Reset to 1 minute
+  const getTaskTotalTime = (taskId: string) => {
+    const todaySessions = getTodaySessions();
+    return todaySessions
+      .filter(session => session.taskId === taskId)
+      .reduce((total, session) => total + session.duration, 0);
   };
 
-  const getSelectedTaskName = () => {
-    const task = filteredTasks.find(t => t.id === selectedTaskId);
-    return task ? task.name : 'Select a task';
+  const getTotalTimeToday = () => {
+    return getTodaySessions().reduce((total, session) => total + session.duration, 0);
   };
 
   const renderQuadrantButton = (quadrant: number, label: string) => (
@@ -123,44 +201,108 @@ const filterTasksByQuadrant = () => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Pomodoro</Text>
+        <Text style={styles.headerTitle}>Focus Timer</Text>
       </View>
 
       <View style={styles.content}>
-<Text style={styles.label}>Task</Text>
-<View style={styles.taskDropdownContainer}>
-  {filteredTasks.length === 0 ? (
-    <View style={styles.taskDropdown}>
-      <Text style={styles.taskDropdownText}>
-        No tasks in this quadrant
-      </Text>
-    </View>
-  ) : (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      {filteredTasks.map(task => (
-        <TouchableOpacity
-          key={task.id}
-          style={[
-            styles.taskChip,
-            selectedTaskId === task.id && styles.taskChipActive,
-          ]}
-          onPress={() => setSelectedTaskId(task.id)}
-        >
-          <Text
-            style={[
-              styles.taskChipText,
-              selectedTaskId === task.id && styles.taskChipTextActive,
-            ]}
-          >
-            {task.name}
+        {/* Timer Display */}
+        <View style={[styles.timerContainer, isBreak && styles.timerContainerBreak]}>
+          <Text style={styles.timerLabel}>
+            {isBreak ? '☕ Break Time' : '🎯 Focus Time'}
           </Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  )}
-</View>
+          <Text style={styles.timerText}>{formatTime(timer)}</Text>
+          {!isBreak && elapsedWorkTime > 0 && (
+            <Text style={styles.elapsedText}>
+              Working for: {formatDuration(elapsedWorkTime)}
+            </Text>
+          )}
+        </View>
 
-        <Text style={styles.label}>Quadrant</Text>
+        {/* Timer Controls */}
+        <View style={styles.controlsContainer}>
+          {!isRunning ? (
+            <TouchableOpacity
+              style={[styles.controlButton, styles.startButton]}
+              onPress={isBreak ? startBreak : startWork}
+            >
+              <Text style={styles.controlButtonText}>Start</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.controlButton, styles.pauseButton]}
+              onPress={pauseTimer}
+            >
+              <Text style={styles.controlButtonText}>Pause</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.resetButton}
+            onPress={resetTimer}
+          >
+            <Text style={styles.resetButtonText}>↻</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Duration Settings */}
+        <View style={styles.settingsContainer}>
+          <View style={styles.settingItem}>
+            <Text style={styles.settingLabel}>Work Duration (min)</Text>
+            <View style={styles.settingInput}>
+              <TouchableOpacity
+                onPress={() => setWorkDuration(Math.max(1, workDuration - 5))}
+                style={styles.adjustButton}
+              >
+                <Text style={styles.adjustButtonText}>-</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={styles.durationInput}
+                value={workDuration.toString()}
+                onChangeText={(text) => {
+                  const num = parseInt(text) || 1;
+                  setWorkDuration(Math.max(1, Math.min(120, num)));
+                }}
+                keyboardType="number-pad"
+              />
+              <TouchableOpacity
+                onPress={() => setWorkDuration(Math.min(120, workDuration + 5))}
+                style={styles.adjustButton}
+              >
+                <Text style={styles.adjustButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.settingItem}>
+            <Text style={styles.settingLabel}>Break Duration (min)</Text>
+            <View style={styles.settingInput}>
+              <TouchableOpacity
+                onPress={() => setBreakDuration(Math.max(1, breakDuration - 5))}
+                style={styles.adjustButton}
+              >
+                <Text style={styles.adjustButtonText}>-</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={styles.durationInput}
+                value={breakDuration.toString()}
+                onChangeText={(text) => {
+                  const num = parseInt(text) || 1;
+                  setBreakDuration(Math.max(1, Math.min(60, num)));
+                }}
+                keyboardType="number-pad"
+              />
+              <TouchableOpacity
+                onPress={() => setBreakDuration(Math.min(60, breakDuration + 5))}
+                style={styles.adjustButton}
+              >
+                <Text style={styles.adjustButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Task Selection */}
+        <Text style={styles.sectionLabel}>Select Task</Text>
         <View style={styles.quadrantContainer}>
           <View style={styles.quadrantRow}>
             {renderQuadrantButton(1, 'Do Now')}
@@ -172,85 +314,71 @@ const filterTasksByQuadrant = () => {
           </View>
         </View>
 
-        <View style={styles.timerContainer}>
-          <Text style={styles.timerText}>{formatTime(timer)}</Text>
+        <View style={styles.taskDropdownContainer}>
+          {filteredTasks.length === 0 ? (
+            <View style={styles.taskDropdown}>
+              <Text style={styles.taskDropdownText}>
+                No tasks in this quadrant
+              </Text>
+            </View>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {filteredTasks.map(task => (
+                <TouchableOpacity
+                  key={task.id}
+                  style={[
+                    styles.taskChip,
+                    selectedTaskId === task.id && styles.taskChipActive,
+                  ]}
+                  onPress={() => setSelectedTaskId(task.id)}
+                >
+                  <Text
+                    style={[
+                      styles.taskChipText,
+                      selectedTaskId === task.id && styles.taskChipTextActive,
+                    ]}
+                  >
+                    {task.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
-        <View style={styles.controlsContainer}>
-          <TouchableOpacity
-            style={[styles.controlButton, styles.controlButtonPrimary]}
-            onPress={isRunning ? pauseCountdown : startCountdown}
-          >
-            <Text style={styles.controlButtonText}>
-              {isRunning ? 'Pause' : 'Start Countdown'}
+        {/* Today's Statistics */}
+        <View style={styles.statsContainer}>
+          <Text style={styles.sectionLabel}>Today's Focus Time</Text>
+          
+          <View style={styles.totalTimeCard}>
+            <Text style={styles.totalTimeLabel}>Total Time</Text>
+            <Text style={styles.totalTimeValue}>
+              {formatDuration(getTotalTimeToday())}
             </Text>
-          </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={styles.resetButton}
-            onPress={resetCountdown}
-          >
-            <Text style={styles.resetButtonText}>↻</Text>
-          </TouchableOpacity>
+          {getTodaySessions().length > 0 && (
+            <View style={styles.sessionsList}>
+              <Text style={styles.sessionsTitle}>Sessions</Text>
+              {getTodaySessions().map((session, index) => (
+                <View key={index} style={styles.sessionItem}>
+                  <View style={styles.sessionInfo}>
+                    <Text style={styles.sessionTaskName}>{session.taskName}</Text>
+                    <Text style={styles.sessionTime}>
+                      {new Date(session.timestamp).toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </Text>
+                  </View>
+                  <Text style={styles.sessionDuration}>
+                    {formatDuration(session.duration)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
-
-        <Text style={styles.label}>Break Duration</Text>
-        <View style={styles.breakDurationContainer}>
-          <TouchableOpacity
-            style={[
-              styles.breakButton,
-              breakDuration === 5 && styles.breakButtonActive,
-            ]}
-            onPress={() => setBreakDuration(5)}
-          >
-            <Text
-              style={[
-                styles.breakButtonText,
-                breakDuration === 5 && styles.breakButtonTextActive,
-              ]}
-            >
-              5 min
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.breakButton,
-              breakDuration === 10 && styles.breakButtonActive,
-            ]}
-            onPress={() => setBreakDuration(10)}
-          >
-            <Text
-              style={[
-                styles.breakButtonText,
-                breakDuration === 10 && styles.breakButtonTextActive,
-              ]}
-            >
-              10 min
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.breakButton,
-              breakDuration === 15 && styles.breakButtonActive,
-            ]}
-            onPress={() => setBreakDuration(15)}
-          >
-            <Text
-              style={[
-                styles.breakButtonText,
-                breakDuration === 15 && styles.breakButtonTextActive,
-              ]}
-            >
-              15 min
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>Save & Leave</Text>
-        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -276,63 +404,127 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
   },
-  label: {
+  timerContainer: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 40,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 20,
+  },
+  timerContainerBreak: {
+    backgroundColor: colors.quadrant3,
+    borderColor: colors.quadrant3,
+  },
+  timerLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  timerText: {
+    fontSize: 64,
+    fontWeight: 'bold',
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  elapsedText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
+  controlsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  controlButton: {
+    flex: 1,
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  startButton: {
+    backgroundColor: colors.primary,
+  },
+  pauseButton: {
+    backgroundColor: colors.quadrant3,
+  },
+  controlButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
+  },
+  resetButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  resetButtonText: {
+    fontSize: 28,
+    color: colors.text,
+  },
+  settingsContainer: {
+    gap: 16,
+    marginBottom: 24,
+  },
+  settingItem: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  settingLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  settingInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  adjustButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  adjustButtonText: {
+    fontSize: 24,
+    color: 'white',
+    fontWeight: '300',
+  },
+  durationInput: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  sectionLabel: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 12,
-    marginTop: 20,
+    marginTop: 8,
   },
-  pickerContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 50,
-  },
-
-  /* Added task dropdown and chip styles used in the component */
-  taskDropdownContainer: {
-    marginBottom: 12,
-  },
-  taskDropdown: {
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
-  },
-  taskDropdownText: {
-    color: colors.text,
-  },
-  taskChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  taskChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  taskChipText: {
-    color: colors.text,
-  },
-  taskChipTextActive: {
-    color: 'white',
-  },
-
   quadrantContainer: {
     gap: 12,
+    marginBottom: 16,
   },
   quadrantRow: {
     flexDirection: 'row',
@@ -352,96 +544,106 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   quadrantButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
   },
   quadrantButtonTextActive: {
     color: 'white',
   },
-  timerContainer: {
+  taskDropdownContainer: {
+    marginBottom: 24,
+  },
+  taskDropdown: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 40,
-    marginTop: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  timerText: {
-    fontSize: 72,
-    fontWeight: 'bold',
-    color: colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-  controlsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
-  },
-  controlButton: {
-    flex: 1,
-    padding: 18,
     borderRadius: 12,
-    alignItems: 'center',
-  },
-  controlButtonPrimary: {
-    backgroundColor: colors.primary,
-  },
-  controlButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-  },
-  resetButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  resetButtonText: {
-    fontSize: 28,
-    color: 'white',
-  },
-  breakDurationContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  breakButton: {
-    flex: 1,
     padding: 16,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center',
   },
-  breakButtonActive: {
+  taskDropdownText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  taskChip: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginRight: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  taskChipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  breakButtonText: {
-    fontSize: 16,
+  taskChipText: {
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
   },
-  breakButtonTextActive: {
+  taskChipTextActive: {
     color: 'white',
   },
-  saveButton: {
-    marginTop: 32,
-    padding: 18,
+  statsContainer: {
+    marginTop: 24,
+  },
+  totalTimeCard: {
+    backgroundColor: colors.primary,
     borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  totalTimeLabel: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: 8,
+  },
+  totalTimeValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  sessionsList: {
     backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center',
   },
-  saveButtonText: {
+  sessionsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  sessionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  sessionInfo: {
+    flex: 1,
+  },
+  sessionTaskName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  sessionTime: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  sessionDuration: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.text,
+    color: colors.primary,
   },
 });
