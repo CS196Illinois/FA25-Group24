@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, TextInput, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+import { useTheme } from '../../contexts/ThemeContext';
 
 /**
  * Box Component
@@ -9,6 +10,7 @@ import { View, TextInput, Text, TouchableOpacity, StyleSheet, FlatList } from 'r
  * @param {string} title - The title displayed at the top of the box
  */
 const Box = ({ color, title }) => {
+  const { colors } = useTheme();
   // State to hold the list of tasks
   const [tasks, setTasks] = useState([]);
   // State to hold the current text being typed
@@ -39,15 +41,15 @@ const Box = ({ color, title }) => {
       {/* Input field for adding new tasks */}
       <View style={styles.inputContainer}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: colors.overlay }]}
           placeholder="Type a task..."
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.textSecondary}
           value={currentText}
           onChangeText={setCurrentText}
           onSubmitEditing={addTask} // Add task when user presses Enter
           returnKeyType="done"
         />
-        <TouchableOpacity style={styles.addButton} onPress={addTask}>
+        <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.overlayStrong }]} onPress={addTask}>
           <Text style={styles.addButtonText}>+</Text>
         </TouchableOpacity>
       </View>
@@ -67,7 +69,7 @@ const Box = ({ color, title }) => {
           </View>
         )}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>No tasks yet. Add one above!</Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No tasks yet. Add one above!</Text>
         }
       />
     </View>
@@ -100,14 +102,12 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#fff',        // White text color
     fontSize: 16,         // Text size
-    backgroundColor: 'rgba(255, 255, 255, 0.2)', // Semi-transparent background
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 5,
   },
   addButton: {
     marginLeft: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     width: 35,
     height: 35,
     borderRadius: 17.5,
@@ -145,7 +145,6 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   emptyText: {
-    color: 'rgba(255, 255, 255, 0.5)',
     fontSize: 12,
     fontStyle: 'italic',
     textAlign: 'center',

@@ -3,15 +3,22 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../contexts/ThemeContext";
 
 /**
- * ProfileButton Component
- * A simple profile button with a person icon
+ * ThemeToggle Component
+ * A button to toggle between light and dark themes
  */
-export default function ProfileButton({ onPress }) {
-  const { colors, theme } = useTheme();
+export default function ThemeToggle() {
+  const { theme, toggleTheme, colors } = useTheme();
 
   return (
-    <TouchableOpacity style={[styles.button, { backgroundColor: colors.profileButton, shadowColor: colors.shadow }]} onPress={onPress}>
-      <Ionicons name="person" size={24} color={theme === 'light' ? '#000' : '#fff'} />
+    <TouchableOpacity
+      style={[styles.button, { backgroundColor: colors.profileButton, shadowColor: colors.shadow }]}
+      onPress={toggleTheme}
+    >
+      <Ionicons
+        name={theme === 'light' ? 'moon' : 'sunny'}
+        size={24}
+        color={theme === 'light' ? '#000' : '#fff'}
+      />
     </TouchableOpacity>
   );
 }
