@@ -8,6 +8,8 @@ import {
   Alert,
   TextInput,
 } from 'react-native';
+// Shreyas's code
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../constants/colors';
 import { calculateQuadrant, getQuadrantName } from '../utils/eisenhowerUtils';
 
@@ -26,6 +28,8 @@ interface Task {
 
 interface PomodoroScreenProps {
   tasks: Task[];
+  // Shreyas's code
+  onTimerStateChange?: (isRunning: boolean) => void;
 }
 
 interface TaskSession {
@@ -35,7 +39,10 @@ interface TaskSession {
   timestamp: string;
 }
 
-export default function PomodoroScreen({ tasks }: PomodoroScreenProps) {
+// Shreyas's code
+const TIMER_STATE_KEY = '@pomodoro_timer_state';
+
+export default function PomodoroScreen({ tasks, onTimerStateChange }: PomodoroScreenProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [selectedQuadrant, setSelectedQuadrant] = useState<number>(1);
   const [workDuration, setWorkDuration] = useState(25); // minutes
@@ -47,9 +54,29 @@ export default function PomodoroScreen({ tasks }: PomodoroScreenProps) {
   const [sessions, setSessions] = useState<TaskSession[]>([]);
   const [elapsedWorkTime, setElapsedWorkTime] = useState(0); // Track elapsed work time
 
+  // Shreyas's code
+  // Load timer state from storage on mount
+  useEffect(() => {
+    loadTimerState();
+  }, []);
+
+  // Shreyas's code
+  // Save timer state whenever it changes
+  useEffect(() => {
+    saveTimerState();
+  }, [timer, isRunning, isBreak, selectedTaskId, elapsedWorkTime, workDuration, breakDuration, selectedQuadrant]);
+
   useEffect(() => {
     filterTasksByQuadrant();
   }, [tasks, selectedQuadrant]);
+
+  // Shreyas's code
+  // Notify parent component when timer state changes
+  useEffect(() => {
+    if (onTimerStateChange) {
+      onTimerStateChange(isRunning);
+    }
+  }, [isRunning, onTimerStateChange]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -76,9 +103,50 @@ export default function PomodoroScreen({ tasks }: PomodoroScreenProps) {
       return quadrant === selectedQuadrant && !task.isCompleted;
     });
     setFilteredTasks(filtered);
-    
+
     if (filtered.length > 0 && !selectedTaskId) {
       setSelectedTaskId(filtered[0].id);
+    }
+  };
+
+  // Shreyas's code
+  // Load timer state from AsyncStorage
+  const loadTimerState = async () => {
+    try {
+      const savedState = await AsyncStorage.getItem(TIMER_STATE_KEY);
+      if (savedState) {
+        const state = JSON.parse(savedState);
+        setTimer(state.timer || 0);
+        setIsRunning(state.isRunning || false);
+        setIsBreak(state.isBreak || false);
+        setSelectedTaskId(state.selectedTaskId || '');
+        setElapsedWorkTime(state.elapsedWorkTime || 0);
+        setWorkDuration(state.workDuration || 25);
+        setBreakDuration(state.breakDuration || 5);
+        setSelectedQuadrant(state.selectedQuadrant || 1);
+      }
+    } catch (error) {
+      console.error('Failed to load timer state:', error);
+    }
+  };
+
+  // Shreyas's code
+  // Save timer state to AsyncStorage
+  const saveTimerState = async () => {
+    try {
+      const state = {
+        timer,
+        isRunning,
+        isBreak,
+        selectedTaskId,
+        elapsedWorkTime,
+        workDuration,
+        breakDuration,
+        selectedQuadrant,
+      };
+      await AsyncStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state));
+    } catch (error) {
+      console.error('Failed to save timer state:', error);
     }
   };
 
@@ -136,7 +204,7 @@ export default function PomodoroScreen({ tasks }: PomodoroScreenProps) {
     setIsRunning(false);
   };
 
-  const resetTimer = () => {
+  const resetTimer = async () => {
     // Save any elapsed work time before resetting
     if (elapsedWorkTime > 0 && !isBreak) {
       saveSession();
@@ -144,6 +212,13 @@ export default function PomodoroScreen({ tasks }: PomodoroScreenProps) {
     setIsRunning(false);
     setTimer(isBreak ? breakDuration * 60 : workDuration * 60);
     setElapsedWorkTime(0);
+    // Shreyas's code
+    // Clear saved timer state when user explicitly resets
+    try {
+      await AsyncStorage.removeItem(TIMER_STATE_KEY);
+    } catch (error) {
+      console.error('Failed to clear timer state:', error);
+    }
   };
 
   const formatTime = (seconds: number) => {

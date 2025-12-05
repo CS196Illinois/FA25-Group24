@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+// Shreyas's code
+import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Session } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import HomeScreen from './src/pages/HomeScreen';
 import CalendarScreen from './src/pages/CalendarScreen';
 import PomodoroScreen from './src/pages/AboutScreen';
@@ -18,6 +20,8 @@ export default function App() {
   const [showNewTask, setShowNewTask] = useState(false);
   const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
   const [tasks, setTasks] = useState([]);
+  // Shreyas's code
+  const [isPomodoroRunning, setIsPomodoroRunning] = useState(false);
 
   useEffect(() => {
     // Check for existing session
@@ -33,6 +37,42 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Shreyas's code
+  // Deep link handler for email confirmation
+  useEffect(() => {
+    const handleDeepLink = async (event: { url: string }) => {
+      const url = event.url;
+      console.log('Deep link received:', url);
+
+      // Check if it's an auth callback
+      if (url.includes('access_token') || url.includes('type=signup') || url.includes('type=recovery')) {
+        // Supabase will automatically handle the session via detectSessionInUrl
+        const { data, error } = await supabase.auth.getSession();
+        if (data.session) {
+          console.log('User authenticated via email confirmation');
+          setSession(data.session);
+        } else if (error) {
+          console.error('Error getting session from deep link:', error);
+        }
+      }
+    };
+
+    // Listen for deep links while app is running
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    // Check if app was opened with a deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink({ url });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+  // Shreyas's code
 
   useEffect(() => {
     if (session) {
@@ -69,6 +109,23 @@ export default function App() {
     setActiveTab('home');
   };
 
+  // Shreyas's code
+  // Handle navigation with timer lock check
+  const handleTabChange = (tab: string) => {
+    if (isPomodoroRunning && activeTab === 'pomodoro') {
+      Alert.alert(
+        'Timer is Running',
+        'Please pause or complete your focus session before leaving.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  // Development bypass - skip login (set to false to re-enable login)
+  const DEV_BYPASS_LOGIN = false;
+
   // Show loading screen while checking auth
   if (loading) {
     return (
@@ -79,8 +136,8 @@ export default function App() {
     );
   }
 
-  // Show auth screens if not logged in
-  if (!session) {
+  // Show auth screens if not logged in (unless dev bypass is enabled)
+  if (!session && !DEV_BYPASS_LOGIN) {
     if (authScreen === 'signup') {
       return (
         <SignupScreen
@@ -126,7 +183,8 @@ export default function App() {
           />
         );
       case 'pomodoro':
-        return <PomodoroScreen tasks={tasks} />;
+        // Shreyas's code
+        return <PomodoroScreen tasks={tasks} onTimerStateChange={setIsPomodoroRunning} />;
       default:
         return (
           <HomeScreen
@@ -145,32 +203,35 @@ export default function App() {
       
       {!showNewTask && (
         <View style={styles.bottomNav}>
-          <TouchableOpacity 
-            style={styles.navButton} 
-            onPress={() => setActiveTab('home')}
+          {/* Shreyas's code */}
+          <TouchableOpacity
+            style={styles.navButton}
+            onPress={() => handleTabChange('home')}
           >
             <Text style={[styles.navIcon, activeTab === 'home' && styles.navIconActive]}>⌂</Text>
             <Text style={[styles.navLabel, activeTab === 'home' && styles.navLabelActive]}>Home</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.navButton} 
-            onPress={() => setActiveTab('calendar')}
+          {/* Shreyas's code */}
+          <TouchableOpacity
+            style={styles.navButton}
+            onPress={() => handleTabChange('calendar')}
           >
             <Text style={[styles.navIcon, activeTab === 'calendar' && styles.navIconActive]}>📅</Text>
             <Text style={[styles.navLabel, activeTab === 'calendar' && styles.navLabelActive]}>Calendar</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.navButton} 
-            onPress={() => setActiveTab('pomodoro')}
+          {/* Shreyas's code */}
+          <TouchableOpacity
+            style={styles.navButton}
+            onPress={() => handleTabChange('pomodoro')}
           >
             <Text style={[styles.navIcon, activeTab === 'pomodoro' && styles.navIconActive]}>⏱</Text>
             <Text style={[styles.navLabel, activeTab === 'pomodoro' && styles.navLabelActive]}>Focus</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.navButton} 
+          <TouchableOpacity
+            style={styles.navButton}
             onPress={handleLogout}
           >
             <Text style={styles.navIcon}>🚪</Text>

@@ -41,7 +41,7 @@ export default function SignupScreen({ onSignupSuccess, onNavigateToLogin }: Sig
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password: password,
     });
@@ -50,11 +50,22 @@ export default function SignupScreen({ onSignupSuccess, onNavigateToLogin }: Sig
     if (error) {
       Alert.alert('Signup Failed', error.message);
     } else {
-      Alert.alert(
-        'Success!',
-        'Account created successfully. You can now sign in.',
-        [{ text: 'OK', onPress: onNavigateToLogin }]
-      );
+      // Shreyas's code
+      // Check if email confirmation is required
+      if (data?.user && !data.session) {
+        Alert.alert(
+          'Check Your Email',
+          'Please check your email and click the confirmation link before signing in.\n\n*Disclaimer: All you need to do is click the link. Don\'t worry about the site refusing to connect - once you click the link, go back to the sign in page.',
+          [{ text: 'OK', onPress: onNavigateToLogin }]
+        );
+      } else {
+        Alert.alert(
+          'Success!',
+          'Account created successfully. You can now sign in.',
+          [{ text: 'OK', onPress: onNavigateToLogin }]
+        );
+      }
+      // Shreyas's code
     }
   };
 

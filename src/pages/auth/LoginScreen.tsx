@@ -37,7 +37,12 @@ export default function LoginScreen({ onLoginSuccess, onNavigateToSignup }: Logi
     setLoading(false);
 
     if (error) {
-      Alert.alert('Login Failed', error.message);
+      // Provide more helpful error messages
+      let errorMessage = error.message;
+      if (error.message.toLowerCase().includes('invalid') || error.message.toLowerCase().includes('credentials')) {
+        errorMessage = 'Invalid email or password. If you just signed up, please check your email for a confirmation link.';
+      }
+      Alert.alert('Login Failed', errorMessage);
     } else {
       onLoginSuccess();
     }

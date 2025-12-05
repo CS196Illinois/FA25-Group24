@@ -84,7 +84,7 @@ export const getAllTasks = async () => {
 export const addTask = async (taskData: any) => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (!user) {
       throw new Error('No user logged in');
     }

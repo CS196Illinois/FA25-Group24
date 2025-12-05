@@ -7,6 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
+    "scheme": "testhomescreen",
 
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -16,7 +17,8 @@
 
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anushka.testhomescreen"
+      "bundleIdentifier": "com.anushka.testhomescreen",
+      "associatedDomains": ["applinks:esabjbknsgzojtvesnrd.supabase.co"]
     },
 
     "android": {
@@ -25,7 +27,21 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anushka.testhomescreen"
+      "package": "com.anushka.testhomescreen",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "esabjbknsgzojtvesnrd.supabase.co",
+              "pathPrefix": "/auth/v1/verify"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
 
     "web": {
